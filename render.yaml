@@ -1,0 +1,31 @@
+services:
+  # Backend Service - FastAPI
+  - type: web
+    name: persian-chatbot-backend
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt && cd backend && python -c "import sqlite3; import os; os.makedirs('vectorstore', exist_ok=True)"
+    startCommand: cd backend && python -m uvicorn app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        value: sqlite:///./app.db
+      - key: VECTORSTORE_PATH
+        value: ./vectorstore
+      - key: PYTHONPATH
+        value: /opt/render/project/src/backend
+    healthCheckPath: /health
+    autoDeploy: true
+
+  # Frontend Service - Next.js Static Site
+  - type: web
+    name: persian-chatbot-frontend
+    env: static
+    plan: free
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/out
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: https://persian-chatbot-backend.onrender.com/api
+    autoDeploy: true
