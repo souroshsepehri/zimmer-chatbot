@@ -18,7 +18,7 @@ fi
 # Install Python dependencies
 log "📦 Installing Python dependencies..."
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install --no-cache-dir -r requirements.txt
 
 # Verify critical packages are installed
 log "🔍 Verifying critical packages..."

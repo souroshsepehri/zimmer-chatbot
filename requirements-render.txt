@@ -1,13 +1,24 @@
+# Core FastAPI dependencies
 fastapi>=0.100.0
 uvicorn[standard]>=0.20.0
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
 python-dotenv>=1.0.0
+python-multipart>=0.0.5
+
+# Database
 sqlalchemy>=2.0.0
 alembic>=1.10.0
+
+# AI/ML dependencies
 langchain>=0.1.0
 langchain-openai>=0.0.5
 langgraph>=0.0.20
+
+# Vector search (use compatible version)
 faiss-cpu>=1.7.0
 numpy>=1.24.0
-python-multipart>=0.0.5
+
+# Additional dependencies that might be needed
+httpx>=0.24.0
+aiofiles>=23.0.0
