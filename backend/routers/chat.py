@@ -57,8 +57,14 @@ async def chat(
             # Don't fail the chat if logging fails
             pass
         
+        # Ensure answer is properly encoded
+        answer = result["answer"]
+        if isinstance(answer, str):
+            # Ensure the answer is properly encoded for JSON response
+            answer = answer.encode('utf-8').decode('utf-8')
+        
         return ChatResponse(
-            answer=result["answer"],
+            answer=answer,
             debug_info=result["debug_info"]
         )
         

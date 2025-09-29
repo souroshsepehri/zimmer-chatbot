@@ -230,6 +230,30 @@ async def root():
 async def health_check():
     return {"status": "healthy"}
 
+@app.get("/test-db")
+async def test_database():
+    """Test database connection and data"""
+    try:
+        from core.db import get_db
+        from models.faq import FAQ
+        
+        db = next(get_db())
+        faq_count = db.query(FAQ).count()
+        db.close()
+        
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "faq_count": faq_count,
+            "message": "Database is working properly"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "database": "error",
+            "error": str(e)
+        }
+
 
 if __name__ == "__main__":
     import uvicorn
