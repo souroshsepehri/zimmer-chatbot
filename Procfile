@@ -1,1 +1,1 @@
-web: cd backend && python -m uvicorn app:app --host 0.0.0.0 --port $PORT
+web: bash -c "pip install -r requirements.txt && mkdir -p backend/vectorstore backend/logs && cd backend && python -c \"import sqlite3; import os; os.makedirs('vectorstore', exist_ok=True)\" && cd .. && cd backend && python -m uvicorn app:app --host 0.0.0.0 --port \$PORT"
