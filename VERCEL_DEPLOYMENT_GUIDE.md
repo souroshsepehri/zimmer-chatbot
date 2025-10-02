@@ -1,75 +1,97 @@
-# Vercel Deployment Guide for Persian Chatbot
+# Vercel Deployment Guide
 
-## Quick Setup
+## Problem Solved
+The original deployment failed due to the 250MB serverless function size limit caused by heavy dependencies like `faiss-cpu`, `langchain`, and other ML libraries.
 
-1. **Install Vercel CLI** (if not already installed):
-   ```bash
-   npm i -g vercel
-   ```
+## Solution
+Created a simplified version that removes heavy dependencies while maintaining core functionality.
 
-2. **Login to Vercel**:
-   ```bash
-   vercel login
-   ```
+## Files for Vercel Deployment
 
-3. **Deploy your project**:
-   ```bash
-   vercel
-   ```
+### 1. Main Application File
+- **Use**: `main-vercel.py` (instead of `main.py`)
+- **Features**: 
+  - Simplified chatbot without heavy ML dependencies
+  - Direct OpenAI API integration
+  - Simple FAQ search
+  - Same beautiful UI
+
+### 2. Requirements File
+- **Use**: `requirements-vercel.txt` (instead of `requirements.txt`)
+- **Dependencies**:
+  ```
+  fastapi==0.104.1
+  uvicorn==0.24.0
+  pydantic==2.5.0
+  python-dotenv==1.0.0
+  openai>=1.0.0
+  ```
+
+### 3. Vercel Configuration
+- **File**: `vercel.json`
+- **Settings**: Optimized for Python serverless functions
+
+## Deployment Steps
+
+### Option 1: Deploy via Vercel CLI
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Login to Vercel
+vercel login
+
+# Deploy
+vercel --prod
+```
+
+### Option 2: Deploy via GitHub
+1. Push the simplified files to GitHub
+2. Connect your GitHub repo to Vercel
+3. Set build settings:
+   - **Build Command**: Leave empty
+   - **Output Directory**: Leave empty
+   - **Install Command**: `pip install -r requirements-vercel.txt`
+
+### Option 3: Manual Upload
+1. Go to Vercel Dashboard
+2. Create new project
+3. Upload `main-vercel.py` as `main.py`
+4. Upload `requirements-vercel.txt` as `requirements.txt`
+5. Upload `vercel.json`
 
 ## Environment Variables
+Set these in Vercel dashboard:
+- `OPENAI_API_KEY`: Your OpenAI API key
 
-Before deploying, make sure to set up your environment variables in the Vercel dashboard:
+## Features Included
+- ✅ Persian chatbot interface
+- ✅ OpenAI GPT-3.5-turbo integration
+- ✅ Simple FAQ search
+- ✅ Beautiful responsive UI
+- ✅ Error handling
+- ✅ Debug mode
+- ✅ Health check endpoint
 
-1. Go to your project in Vercel dashboard
-2. Navigate to Settings > Environment Variables
-3. Add the following variables:
+## Features Removed (for size optimization)
+- ❌ FAISS vector search
+- ❌ LangChain dependencies
+- ❌ SQLAlchemy database
+- ❌ Complex ML pipelines
+- ❌ Vector embeddings
 
-```
-OPENAI_API_KEY=your_actual_openai_api_key
-OPENAI_MODEL=gpt-4o-mini
-EMBEDDING_MODEL=text-embedding-3-small
-RETRIEVAL_TOP_K=4
-RETRIEVAL_THRESHOLD=0.82
-DATABASE_URL=sqlite:///./app.db
-```
+## Size Comparison
+- **Original**: ~250MB+ (exceeds limit)
+- **Simplified**: ~50MB (well under limit)
 
-## Important Notes
+## Testing
+After deployment, test these endpoints:
+- `GET /` - Chatbot interface
+- `POST /api/chat` - Chat API
+- `GET /health` - Health check
 
-- The app is configured to work with Vercel's serverless environment
-- Database tables are only created when not running on Vercel (serverless functions don't support persistent file storage)
-- For production, consider using a cloud database like PostgreSQL or MongoDB
-- The app includes CORS settings for Vercel domains
-
-## File Structure
-
-```
-├── main.py              # Main FastAPI app (Vercel entry point)
-├── vercel.json          # Vercel configuration
-├── requirements.txt     # Python dependencies
-├── .env.example        # Environment variables template
-└── backend/            # Your existing backend code
-    ├── core/
-    ├── models/
-    ├── routers/
-    └── services/
-```
-
-## Testing Locally
-
-To test the Vercel configuration locally:
-
-```bash
-vercel dev
-```
-
-This will start a local development server that mimics Vercel's environment.
-
-## Troubleshooting
-
-If you encounter issues:
-
-1. Check that all environment variables are set correctly
-2. Ensure your OpenAI API key is valid
-3. Check the Vercel function logs for detailed error messages
-4. Make sure all dependencies are listed in requirements.txt
+## Rollback Plan
+If you need the full-featured version:
+1. Use the original `main.py` and `requirements.txt`
+2. Deploy to a platform that supports larger functions (Render, Railway, etc.)
+3. Keep the simplified version for Vercel
