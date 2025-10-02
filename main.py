@@ -8,13 +8,17 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), 'backend'))
 
 # Import from backend modules
-from core.db import engine, Base
-from routers import chat, faqs, logs
-from core.config import settings
+try:
+    from core.db import engine, Base
+    from routers import chat, faqs, logs
+    from core.config import settings
+    BACKEND_AVAILABLE = True
+except ImportError as e:
+    print(f"Backend modules not available: {e}")
+    BACKEND_AVAILABLE = False
 
-# Create database tables (only if not in Vercel serverless environment)
-if not os.environ.get('VERCEL'):
-    Base.metadata.create_all(bind=engine)
+# Skip database initialization in Vercel serverless environment
+# Database will be handled by external service in production
 
 # Create FastAPI app
 app = FastAPI(
@@ -37,10 +41,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(chat.router, prefix="/api", tags=["chat"])
-app.include_router(faqs.router, prefix="/api", tags=["faqs"])
-app.include_router(logs.router, prefix="/api", tags=["logs"])
+# Include routers only if backend is available
+if BACKEND_AVAILABLE:
+    app.include_router(chat.router, prefix="/api", tags=["chat"])
+    app.include_router(faqs.router, prefix="/api", tags=["faqs"])
+    app.include_router(logs.router, prefix="/api", tags=["logs"])
 
 
 @app.get("/")
@@ -242,6 +247,13 @@ async def health_check():
 @app.get("/test-db")
 async def test_database():
     """Test database connection and data"""
+    if not BACKEND_AVAILABLE:
+        return {
+            "status": "error",
+            "database": "not_available",
+            "message": "Backend modules not available in serverless environment"
+        }
+    
     try:
         from core.db import get_db
         from models.faq import FAQ
