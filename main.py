@@ -17,6 +17,22 @@ except ImportError as e:
     print(f"Backend modules not available: {e}")
     BACKEND_AVAILABLE = False
 
+# Simple fallback chatbot without LangChain
+def simple_chatbot_response(message: str) -> str:
+    """Simple chatbot response without AI dependencies"""
+    message_lower = message.lower()
+    
+    if any(word in message_lower for word in ['سلام', 'hello', 'hi']):
+        return "سلام! خوش آمدید. چطور می‌تونم کمکتون کنم؟"
+    elif any(word in message_lower for word in ['چطوری', 'حالت', 'چطوری']):
+        return "من خوبم، ممنون! شما چطورید؟"
+    elif any(word in message_lower for word in ['خداحافظ', 'bye', 'goodbye']):
+        return "خداحافظ! امیدوارم روز خوبی داشته باشید."
+    elif any(word in message_lower for word in ['کمک', 'help', 'راهنما']):
+        return "من اینجا هستم تا کمکتون کنم. سوالاتتون رو بپرسید."
+    else:
+        return "متوجه نشدم. لطفاً سوال خود را واضح‌تر بپرسید."
+
 # Skip database initialization in Vercel serverless environment
 # Database will be handled by external service in production
 
@@ -243,6 +259,26 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+@app.post("/api/chat")
+async def simple_chat(request: dict):
+    """Simple chat endpoint that works without LangChain dependencies"""
+    message = request.get("message", "")
+    if not message:
+        return {"answer": "لطفاً پیام خود را وارد کنید."}
+    
+    # Try to use backend if available, otherwise use simple fallback
+    if BACKEND_AVAILABLE:
+        try:
+            # This would normally call the backend chat router
+            # For now, use simple response
+            response = simple_chatbot_response(message)
+            return {"answer": response}
+        except Exception as e:
+            print(f"Backend chat error: {e}")
+            return {"answer": simple_chatbot_response(message)}
+    else:
+        return {"answer": simple_chatbot_response(message)}
 
 @app.get("/test-db")
 async def test_database():
