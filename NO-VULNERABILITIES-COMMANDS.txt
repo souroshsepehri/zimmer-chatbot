@@ -1,0 +1,21 @@
+# NO VULNERABILITIES BUILD COMMANDS FOR RENDER
+# Use these commands to avoid all npm vulnerabilities
+
+# Build Command (Backend Only - No Vulnerabilities):
+pip install --upgrade pip && pip install -r requirements.txt && mkdir -p backend/vectorstore backend/logs backend/__pycache__ && cd backend && python -c "import sqlite3; import os; os.makedirs('vectorstore', exist_ok=True); os.makedirs('logs', exist_ok=True); print('✅ Backend setup complete')" && cd ..
+
+# Start Command (Backend Only):
+python start-backend-only.py
+
+# Alternative Build Command (Even Simpler):
+pip install -r requirements.txt && mkdir -p backend/vectorstore backend/logs && cd backend && python -c "import sqlite3; import os; os.makedirs('vectorstore', exist_ok=True)" && cd ..
+
+# Alternative Start Command (Direct):
+cd backend && python -m uvicorn app:app --host 0.0.0.0 --port $PORT
+
+# What you'll get:
+# - Backend API at: https://your-app.onrender.com/api/chat
+# - API docs at: https://your-app.onrender.com/docs
+# - Health check at: https://your-app.onrender.com/health
+# - NO FRONTEND (to avoid vulnerabilities)
+# - NO NPM PACKAGES (to avoid vulnerabilities)

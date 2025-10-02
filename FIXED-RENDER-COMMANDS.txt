@@ -1,0 +1,32 @@
+# FIXED RENDER COMMANDS (Correct File Paths)
+
+## Build Command:
+```bash
+pip install --upgrade pip && pip install -r requirements.txt && mkdir -p backend/vectorstore backend/logs backend/__pycache__ && cd backend && python -c "import sqlite3; import os; os.makedirs('vectorstore', exist_ok=True); os.makedirs('logs', exist_ok=True); print('✅ Backend setup complete')" && cd ..
+```
+
+## Start Command (Fixed Path):
+```bash
+python ./start_fixed.py
+```
+
+## Alternative Start Command (If above fails):
+```bash
+python start_fixed.py
+```
+
+## Alternative Start Command (Direct Backend):
+```bash
+cd backend && python -m uvicorn app:app --host 0.0.0.0 --port $PORT
+```
+
+## Alternative Start Command (Using Procfile):
+```bash
+python start_simple.py
+```
+
+## What to try in order:
+1. First try: `python ./start_fixed.py`
+2. If that fails: `python start_fixed.py`
+3. If that fails: `cd backend && python -m uvicorn app:app --host 0.0.0.0 --port $PORT`
+4. If that fails: `python start_simple.py`

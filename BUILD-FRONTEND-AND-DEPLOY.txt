@@ -1,0 +1,68 @@
+# HOW TO GET YOUR CHATBOT INTERFACE WORKING
+
+## The Problem:
+You're only running the backend API, but you need the frontend to see the chatbot interface.
+
+## Solution 1: Build Frontend Locally First (Recommended)
+
+### Step 1: Build Frontend on Your Computer
+Run this on your local machine:
+
+```bash
+# Windows:
+cd frontend
+npm install
+npm run build
+
+# Linux/Mac:
+cd frontend
+npm install
+npm run build
+```
+
+### Step 2: Commit the Built Frontend
+```bash
+git add frontend/out/
+git commit -m "Add built frontend"
+git push
+```
+
+### Step 3: Deploy with New Commands
+
+#### Build Command:
+```bash
+pip install -r requirements.txt && mkdir -p backend/vectorstore backend/logs && cd backend && python -c "import sqlite3; import os; os.makedirs('vectorstore', exist_ok=True)" && cd ..
+```
+
+#### Start Command:
+```bash
+python start_with_frontend_simple.py
+```
+
+## Solution 2: Quick Test - Use API Directly
+
+### Test Your Chatbot API:
+1. Go to: `https://your-app.onrender.com/api/docs`
+2. Click on `/api/chat`
+3. Click "Try it out"
+4. Enter: `{"message": "سلام، چطوری؟"}`
+5. Click "Execute"
+
+### Or use curl:
+```bash
+curl -X POST https://your-app.onrender.com/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "سلام، چطوری؟"}'
+```
+
+## Solution 3: Create Simple HTML Frontend
+
+I can create a simple HTML file that calls your API if you can't build the React frontend.
+
+## What You'll Get:
+- ✅ Beautiful Persian chatbot interface
+- ✅ Chat widget with Persian text
+- ✅ Backend API working
+- ✅ Both running together
+
+## Try Solution 1 first - it will give you the full chatbot interface!

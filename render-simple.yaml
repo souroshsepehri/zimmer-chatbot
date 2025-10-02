@@ -1,5 +1,5 @@
 services:
-  # Unified Service - Backend + Frontend
+  # Unified Service - Backend + Frontend in one service
   - type: web
     name: persian-chatbot-unified
     env: python
@@ -8,7 +8,7 @@ services:
       pip install -r requirements.txt && 
       cd frontend && npm install && npm run build && cd .. &&
       cd backend && python -c "import sqlite3; import os; os.makedirs('vectorstore', exist_ok=True)" && cd ..
-    startCommand: python start_unified.py
+    startCommand: python start_simple.py
     envVars:
       - key: OPENAI_API_KEY
         sync: false

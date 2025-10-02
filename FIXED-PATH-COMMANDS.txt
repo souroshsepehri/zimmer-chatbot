@@ -1,0 +1,38 @@
+# FIXED PATH COMMANDS FOR RENDER
+
+## Build Command:
+```bash
+pip install -r requirements.txt && mkdir -p backend/vectorstore backend/logs && cd backend && python -c "import sqlite3; import os; os.makedirs('vectorstore', exist_ok=True)" && cd ..
+```
+
+## Start Command (Fixed Path):
+```bash
+python ./start_with_frontend_simple.py
+```
+
+## Alternative Start Command (If above fails):
+```bash
+python start_with_frontend_simple.py
+```
+
+## Alternative Start Command (Direct Backend):
+```bash
+cd backend && python -m uvicorn app:app --host 0.0.0.0 --port $PORT
+```
+
+## Alternative Start Command (Most Reliable):
+```bash
+cd backend && python app.py
+```
+
+## Try in this order:
+1. First: `python ./start_with_frontend_simple.py`
+2. If fails: `python start_with_frontend_simple.py`
+3. If fails: `cd backend && python -m uvicorn app:app --host 0.0.0.0 --port $PORT`
+4. If fails: `cd backend && python app.py`
+
+## What you'll get:
+- Backend API at: https://your-app.onrender.com/api/chat
+- API docs at: https://your-app.onrender.com/docs
+- Health check at: https://your-app.onrender.com/health
+- Frontend (if built) at: https://your-app.onrender.com/

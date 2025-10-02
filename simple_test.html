@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Chatbot</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            white-space: pre-wrap;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Chatbot Server Test</h1>
+        
+        <div class="test-section">
+            <h3>1. Test Root Endpoint</h3>
+            <button onclick="testRoot()">Test /</button>
+            <div id="rootResult" class="result"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>2. Test API Endpoint</h3>
+            <button onclick="testAPI()">Test /api/chat</button>
+            <div id="apiResult" class="result"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>3. Test Health Endpoint</h3>
+            <button onclick="testHealth()">Test /health</button>
+            <div id="healthResult" class="result"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>4. Quick Chat Test</h3>
+            <input type="text" id="chatInput" placeholder="Type a message..." style="width: 70%; padding: 8px;">
+            <button onclick="testChat()">Send</button>
+            <div id="chatResult" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        const baseUrl = window.location.origin;
+        
+        async function testRoot() {
+            const result = document.getElementById('rootResult');
+            result.textContent = 'Testing...';
+            
+            try {
+                const response = await fetch('/');
+                const text = await response.text();
+                
+                if (response.ok) {
+                    if (text.includes('بات هوشمند زیمر')) {
+                        result.textContent = '✅ Chatbot interface found!';
+                        result.className = 'result success';
+                    } else if (text.includes('message')) {
+                        result.textContent = '⚠️ JSON response instead of HTML\n' + text.substring(0, 200);
+                        result.className = 'result error';
+                    } else {
+                        result.textContent = '❓ Unknown response\n' + text.substring(0, 200);
+                        result.className = 'result error';
+                    }
+                } else {
+                    result.textContent = `❌ Error: ${response.status}`;
+                    result.className = 'result error';
+                }
+            } catch (error) {
+                result.textContent = `❌ Connection error: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+        
+        async function testAPI() {
+            const result = document.getElementById('apiResult');
+            result.textContent = 'Testing...';
+            
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: 'سلام'
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    result.textContent = `✅ API working!\nResponse: ${data.answer || 'No answer'}`;
+                    result.className = 'result success';
+                } else {
+                    result.textContent = `❌ API error: ${response.status}`;
+                    result.className = 'result error';
+                }
+            } catch (error) {
+                result.textContent = `❌ API error: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+        
+        async function testHealth() {
+            const result = document.getElementById('healthResult');
+            result.textContent = 'Testing...';
+            
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    result.textContent = `✅ Health check: ${JSON.stringify(data)}`;
+                    result.className = 'result success';
+                } else {
+                    result.textContent = `❌ Health error: ${response.status}`;
+                    result.className = 'result error';
+                }
+            } catch (error) {
+                result.textContent = `❌ Health error: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+        
+        async function testChat() {
+            const input = document.getElementById('chatInput');
+            const result = document.getElementById('chatResult');
+            const message = input.value.trim();
+            
+            if (!message) {
+                result.textContent = 'Please enter a message';
+                result.className = 'result error';
+                return;
+            }
+            
+            result.textContent = 'Sending...';
+            
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    result.textContent = `✅ Chat working!\nYour message: ${message}\nBot response: ${data.answer || 'No answer'}`;
+                    result.className = 'result success';
+                    input.value = '';
+                } else {
+                    result.textContent = `❌ Chat error: ${response.status}`;
+                    result.className = 'result error';
+                }
+            } catch (error) {
+                result.textContent = `❌ Chat error: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+        
+        // Auto-test on load
+        window.onload = function() {
+            testRoot();
+            testHealth();
+        };
+    </script>
+</body>
+</html>

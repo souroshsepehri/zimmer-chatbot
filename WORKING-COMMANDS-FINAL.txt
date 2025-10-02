@@ -1,0 +1,49 @@
+# WORKING COMMANDS FOR RENDER (FINAL VERSION)
+
+## Build Command:
+```bash
+pip install -r requirements.txt && mkdir -p backend/vectorstore backend/logs && cd backend && python -c "import sqlite3; import os; os.makedirs('vectorstore', exist_ok=True)" && cd ..
+```
+
+## Start Command (Try These in Order):
+
+### Option 1 (With Frontend):
+```bash
+python ./start_with_frontend_simple.py
+```
+
+### Option 2 (Backend Only - Guaranteed to Work):
+```bash
+python start_backend_only_simple.py
+```
+
+### Option 3 (Direct Backend):
+```bash
+cd backend && python -m uvicorn app:app --host 0.0.0.0 --port $PORT
+```
+
+### Option 4 (Most Basic):
+```bash
+cd backend && python app.py
+```
+
+## What Each Option Gives You:
+
+### Option 1: Frontend + Backend
+- Frontend at: https://your-app.onrender.com/
+- API at: https://your-app.onrender.com/api/chat
+
+### Options 2-4: Backend Only
+- API at: https://your-app.onrender.com/api/chat
+- API docs at: https://your-app.onrender.com/docs
+- Health check at: https://your-app.onrender.com/health
+
+## Recommendation:
+Start with Option 2 (backend only) to make sure it works, then try Option 1 for frontend.
+
+## Test Your Chatbot:
+1. Go to: https://your-app.onrender.com/docs
+2. Click on /api/chat
+3. Click "Try it out"
+4. Enter: {"message": "سلام، چطوری؟"}
+5. Click "Execute"

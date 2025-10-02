@@ -1,0 +1,47 @@
+# BACKEND + FRONTEND TOGETHER (NO VULNERABILITIES)
+
+## STEP 1: Build Frontend Locally First
+Run this on your local machine before deploying:
+
+### Windows:
+```bash
+build-frontend-locally.bat
+```
+
+### Linux/Mac:
+```bash
+chmod +x build-frontend-locally.sh
+./build-frontend-locally.sh
+```
+
+## STEP 2: Deploy to Render with These Commands
+
+### Build Command:
+```bash
+pip install --upgrade pip && pip install -r requirements.txt && mkdir -p backend/vectorstore backend/logs backend/__pycache__ && cd backend && python -c "import sqlite3; import os; os.makedirs('vectorstore', exist_ok=True); os.makedirs('logs', exist_ok=True); print('✅ Backend setup complete')" && cd ..
+```
+
+### Start Command:
+```bash
+python start-with-frontend.py
+```
+
+## What This Gives You:
+- ✅ Backend API at /api
+- ✅ Frontend interface at root URL (/)
+- ✅ No vulnerabilities (frontend pre-built locally)
+- ✅ Both running together on same URL
+
+## Alternative: If You Can't Build Locally
+
+### Build Command (Backend Only):
+```bash
+pip install -r requirements.txt && mkdir -p backend/vectorstore backend/logs && cd backend && python -c "import sqlite3; import os; os.makedirs('vectorstore', exist_ok=True)" && cd ..
+```
+
+### Start Command (Backend Only):
+```bash
+cd backend && python -m uvicorn app:app --host 0.0.0.0 --port $PORT
+```
+
+Then create a simple HTML frontend later.

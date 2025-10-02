@@ -1,0 +1,13 @@
+# RENDER BUILD COMMANDS - COPY THESE EXACTLY
+
+# Build Command:
+pip install --upgrade pip && pip install -r requirements.txt && cd backend && python -c "import sqlite3; import os; os.makedirs('vectorstore', exist_ok=True); os.makedirs('logs', exist_ok=True)" && cd .. && cd frontend && npm install && npm run build && cd ..
+
+# Start Command:
+python start_fixed.py
+
+# Alternative Build Command (if above fails):
+pip install -r requirements.txt && cd backend && python -c "import sqlite3; import os; os.makedirs('vectorstore', exist_ok=True)" && cd .. && cd frontend && npm install && npm run build && cd ..
+
+# Alternative Start Command (if above fails):
+cd backend && python -m uvicorn app:app --host 0.0.0.0 --port $PORT

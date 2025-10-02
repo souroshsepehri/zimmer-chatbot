@@ -1,0 +1,55 @@
+# TROUBLESHOOTING GUIDE - Why Your Chatbot Isn't Showing
+
+## Quick Tests:
+
+### 1. Test Your Server
+Run this Python script to test what your server is serving:
+```bash
+python test_server.py https://your-app.onrender.com
+```
+
+### 2. Check What You're Seeing
+When you go to your Render URL, what do you see?
+- JSON message like `{"message": "Persian Chatbot API is running"}`?
+- Error page?
+- Blank page?
+- Something else?
+
+### 3. Test the API Directly
+Go to: `https://your-app.onrender.com/api/docs`
+- Do you see the API documentation?
+- Can you test the `/api/chat` endpoint?
+
+### 4. Test with Simple HTML
+I've created `simple_test.html` - you can:
+1. Open it in your browser
+2. Change the URL to your Render app
+3. Test all endpoints
+
+## Common Issues:
+
+### Issue 1: Backend Only Running
+**Symptom:** You see JSON instead of HTML
+**Solution:** The chatbot interface is built into the backend, but it's not being served
+
+### Issue 2: Import Error
+**Symptom:** Server won't start
+**Solution:** Check if all dependencies are installed
+
+### Issue 3: Port Issues
+**Symptom:** Connection refused
+**Solution:** Make sure PORT environment variable is set
+
+## Quick Fixes:
+
+### Fix 1: Check Your Render URL
+Make sure you're going to the right URL:
+- `https://your-app-name.onrender.com/` (not `/api`)
+
+### Fix 2: Check Server Logs
+In Render dashboard, check the logs to see what's happening
+
+### Fix 3: Test API First
+Go to `https://your-app.onrender.com/api/docs` and test the chat endpoint
+
+## Tell me what you see when you go to your Render URL!
