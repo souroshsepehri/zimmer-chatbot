@@ -174,6 +174,14 @@ export default function AdminDashboard() {
       icon: FileText,
       color: 'purple',
       gradient: 'from-purple-500 to-pink-600'
+    },
+    {
+      name: 'اضافه سایت',
+      description: 'افزودن یا حذف URL های وب‌سایت',
+      href: '/admin/websites',
+      icon: Plus,
+      color: 'orange',
+      gradient: 'from-orange-500 to-red-600'
     }
   ];
 

@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>بات هوشمند با قابلیت خواندن وب‌سایت</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .chatbot-container {
+            width: 95%;
+            max-width: 1200px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 { font-size: 2rem; margin-bottom: 10px; }
+        .header p { opacity: 0.9; }
+        
+        .main-content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        .sidebar {
+            width: 300px;
+            background: #f8f9fa;
+            border-left: 1px solid #e0e0e0;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+        }
+        .message.user { justify-content: flex-end; }
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+        }
+        .message.bot .message-content {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+        .message.user .message-content {
+            background: #667eea;
+            color: white;
+        }
+        
+        .sources {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f0f8ff;
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+        .sources h4 { margin-bottom: 5px; color: #1976d2; }
+        .sources ul { margin: 0; padding-right: 20px; }
+        .sources li { margin-bottom: 3px; }
+        
+        .input-container {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 10px;
+        }
+        .input-field {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        .input-field:focus { border-color: #667eea; }
+        .send-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        .send-button:hover { background: #5a6fd8; }
+        .send-button:disabled { background: #ccc; cursor: not-allowed; }
+        
+        .loading { display: none; text-align: center; padding: 10px; color: #666; }
+        .error { background: #ffebee; color: #c62828; padding: 10px; margin: 10px 20px; border-radius: 8px; text-align: center; }
+        
+        .sidebar-section {
+            margin-bottom: 20px;
+        }
+        .sidebar-section h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+        
+        .url-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        
+        .add-website-btn {
+            width: 100%;
+            background: #4caf50;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        .add-website-btn:hover { background: #45a049; }
+        .add-website-btn:disabled { background: #ccc; }
+        
+        .website-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .website-item {
+            padding: 8px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+        }
+        .website-item .domain { font-weight: bold; color: #1976d2; }
+        .website-item .pages { color: #666; font-size: 0.8em; }
+        
+        .context-selector {
+            margin-bottom: 15px;
+        }
+        .context-selector label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .context-selector select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+        }
+        
+        .stats {
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+        .stats h4 { margin-bottom: 8px; color: #333; }
+        .stats div { margin-bottom: 5px; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <div class="chatbot-container">
+        <div class="header">
+            <h1>بات هوشمند با قابلیت خواندن وب‌سایت</h1>
+            <p>دستیار هوشمند فارسی که می‌تواند از محتوای وب‌سایت‌ها استفاده کند</p>
+        </div>
+        
+        <div class="main-content">
+            <div class="chat-area">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="message bot">
+                        <div class="message-content">
+                            سلام وقت بخیر! ربات هوشمند با قابلیت خواندن وب‌سایت هستم. 
+                            می‌تونم هم از پایگاه داده FAQ و هم از محتوای وب‌سایت‌هایی که اضافه می‌کنید، 
+                            برای پاسخ به سؤالات شما استفاده کنم.
+                        </div>
+                    </div>
+                </div>
+                <div class="loading" id="loading">در حال پردازش...</div>
+                <div class="input-container">
+                    <input type="text" id="messageInput" class="input-field" placeholder="پیام خود را بنویسید..." />
+                    <button id="sendButton" class="send-button">ارسال</button>
+                </div>
+            </div>
+            
+            <div class="sidebar">
+                <div class="sidebar-section">
+                    <h3>افزودن وب‌سایت</h3>
+                    <input type="text" id="websiteUrl" class="url-input" placeholder="آدرس وب‌سایت (مثال: example.com)" />
+                    <button id="addWebsiteBtn" class="add-website-btn">افزودن وب‌سایت</button>
+                </div>
+                
+                <div class="sidebar-section">
+                    <h3>انتخاب منبع پاسخ</h3>
+                    <div class="context-selector">
+                        <label for="contextPreference">از کدام منبع استفاده کنم؟</label>
+                        <select id="contextPreference">
+                            <option value="both">هر دو (FAQ + وب‌سایت)</option>
+                            <option value="faq">فقط FAQ</option>
+                            <option value="web">فقط وب‌سایت</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="sidebar-section">
+                    <h3>وب‌سایت‌های موجود</h3>
+                    <div class="website-list" id="websiteList">
+                        <div style="text-align: center; color: #666; padding: 20px;">
+                            هنوز وب‌سایتی اضافه نشده
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="sidebar-section">
+                    <h3>آمار</h3>
+                    <div class="stats" id="stats">
+                        <div>در حال بارگذاری...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const chatMessages = document.getElementById('chatMessages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const loading = document.getElementById('loading');
+        const websiteUrl = document.getElementById('websiteUrl');
+        const addWebsiteBtn = document.getElementById('addWebsiteBtn');
+        const contextPreference = document.getElementById('contextPreference');
+        const websiteList = document.getElementById('websiteList');
+        const stats = document.getElementById('stats');
+        
+        const API_BASE = window.location.origin + '/api';
+        
+        // Load initial data
+        loadWebsites();
+        loadStats();
+        
+        function addMessage(text, isUser, sources = null) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.textContent = text;
+            
+            if (sources && sources.length > 0) {
+                const sourcesDiv = document.createElement('div');
+                sourcesDiv.className = 'sources';
+                sourcesDiv.innerHTML = `
+                    <h4>منابع:</h4>
+                    <ul>
+                        ${sources.map(source => `<li>${source}</li>`).join('')}
+                    </ul>
+                `;
+                contentDiv.appendChild(sourcesDiv);
+            }
+            
+            messageDiv.appendChild(contentDiv);
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        function showLoading() {
+            loading.style.display = 'block';
+            sendButton.disabled = true;
+        }
+        
+        function hideLoading() {
+            loading.style.display = 'none';
+            sendButton.disabled = false;
+        }
+        
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = message;
+            chatMessages.appendChild(errorDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+            
+            addMessage(message, true);
+            messageInput.value = '';
+            showLoading();
+            
+            try {
+                const response = await fetch(`${API_BASE}/chat-with-url`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        question: message,
+                        context_preference: contextPreference.value
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                addMessage(data.answer || 'پاسخ دریافت شد', false, data.sources || []);
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showError('خطا در ارتباط با سرور. لطفاً دوباره تلاش کنید.');
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        async function addWebsite() {
+            const url = websiteUrl.value.trim();
+            if (!url) {
+                alert('لطفاً آدرس وب‌سایت را وارد کنید');
+                return;
+            }
+            
+            addWebsiteBtn.disabled = true;
+            addWebsiteBtn.textContent = 'در حال افزودن...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/add-website`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url, max_pages: 50 })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`وب‌سایت با موفقیت اضافه شد!\nصفحات اسکن شده: ${data.pages_scraped}`);
+                    websiteUrl.value = '';
+                    loadWebsites();
+                    loadStats();
+                } else {
+                    alert(`خطا در افزودن وب‌سایت: ${data.message}`);
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                alert('خطا در ارتباط با سرور');
+            } finally {
+                addWebsiteBtn.disabled = false;
+                addWebsiteBtn.textContent = 'افزودن وب‌سایت';
+            }
+        }
+        
+        async function loadWebsites() {
+            try {
+                const response = await fetch(`${API_BASE}/websites`);
+                const websites = await response.json();
+                
+                if (websites.length === 0) {
+                    websiteList.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">هنوز وب‌سایتی اضافه نشده</div>';
+                } else {
+                    websiteList.innerHTML = websites.map(website => `
+                        <div class="website-item">
+                            <div class="domain">${website.domain}</div>
+                            <div class="pages">${website.total_pages} صفحه - ${website.total_words} کلمه</div>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Error loading websites:', error);
+            }
+        }
+        
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/stats`);
+                const data = await response.json();
+                
+                stats.innerHTML = `
+                    <h4>آمار پایگاه دانش</h4>
+                    <div>وب‌سایت‌ها: ${data.web_content?.total_websites || 0}</div>
+                    <div>تکه‌های محتوا: ${data.web_content?.total_chunks || 0}</div>
+                    <div>پایگاه FAQ: ${data.faq_database?.status === 'available' ? 'فعال' : 'غیرفعال'}</div>
+                `;
+            } catch (error) {
+                console.error('Error loading stats:', error);
+                stats.innerHTML = '<div>خطا در بارگذاری آمار</div>';
+            }
+        }
+        
+        // Event listeners
+        sendButton.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+        addWebsiteBtn.addEventListener('click', addWebsite);
+        websiteUrl.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addWebsite();
+        });
+        
+        messageInput.focus();
+    </script>
+</body>
+</html>

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نمونه وب‌سایت با بات هوشمند</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+        }
+        .header h1 { font-size: 2.5rem; margin-bottom: 1rem; }
+        .header p { font-size: 1.2rem; opacity: 0.9; }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        .content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin: 2rem 0;
+        }
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 1px solid #e0e0e0;
+        }
+        .card h3 {
+            color: #667eea;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+        .card p {
+            color: #666;
+            line-height: 1.8;
+        }
+        .footer {
+            background: #333;
+            color: white;
+            text-align: center;
+            padding: 2rem 0;
+            margin-top: 3rem;
+        }
+        .chatbot-notice {
+            background: #e3f2fd;
+            border: 1px solid #1976d2;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 2rem 0;
+            text-align: center;
+        }
+        .chatbot-notice h4 {
+            color: #1976d2;
+            margin-bottom: 0.5rem;
+        }
+        .chatbot-notice p {
+            color: #1565c0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌐 نمونه وب‌سایت</h1>
+        <p>وب‌سایت نمونه با بات هوشمند</p>
+    </div>
+    
+    <div class="container">
+        <div class="chatbot-notice">
+            <h4>🤖 بات هوشمند</h4>
+            <p>برای سؤالات خود، روی آیکون بات در گوشه پایین سمت راست کلیک کنید</p>
+        </div>
+        
+        <div class="content">
+            <div class="card">
+                <h3>📋 درباره ما</h3>
+                <p>ما یک شرکت پیشرو در زمینه فناوری هستیم که با استفاده از آخرین تکنولوژی‌ها، راه‌حل‌های نوآورانه ارائه می‌دهیم. تیم ما متشکل از متخصصان با تجربه است که در زمینه‌های مختلف فناوری فعالیت می‌کنند.</p>
+            </div>
+            
+            <div class="card">
+                <h3>🛠️ خدمات ما</h3>
+                <p>خدمات ما شامل توسعه نرم‌افزار، طراحی وب‌سایت، مشاوره فناوری، و پشتیبانی فنی است. ما با استفاده از بهترین روش‌ها و ابزارها، پروژه‌های شما را با کیفیت بالا و در زمان مناسب تحویل می‌دهیم.</p>
+            </div>
+            
+            <div class="card">
+                <h3>📞 تماس با ما</h3>
+                <p>برای دریافت اطلاعات بیشتر یا مشاوره رایگان، می‌توانید با ما تماس بگیرید. تیم پشتیبانی ما آماده پاسخگویی به سؤالات شما است. همچنین می‌توانید از طریق بات هوشمند سایت با ما در ارتباط باشید.</p>
+            </div>
+            
+            <div class="card">
+                <h3>🎯 اهداف ما</h3>
+                <p>هدف ما ارائه بهترین خدمات به مشتریان و کمک به رشد کسب‌وکار آن‌ها است. ما معتقدیم که فناوری باید در خدمت انسان باشد و زندگی را آسان‌تر کند. به همین دلیل، تمام تلاش خود را برای ارائه راه‌حل‌های کاربردی و مؤثر به کار می‌گیریم.</p>
+            </div>
+        </div>
+        
+        <div class="chatbot-notice">
+            <h4>💡 نکته</h4>
+            <p>بات هوشمند ما می‌تواند به سؤالات شما درباره خدمات، قیمت‌ها، و اطلاعات شرکت پاسخ دهد. فقط روی آیکون بات کلیک کنید و سؤال خود را بپرسید!</p>
+        </div>
+    </div>
+    
+    <div class="footer">
+        <p>&copy; 2024 نمونه وب‌سایت. تمام حقوق محفوظ است.</p>
+    </div>
+    
+    <!-- Chatbot Widget - این کد باید در انتهای صفحه قرار گیرد -->
+    <div id="chatbot-widget"></div>
+    <script>
+        (function() {
+            var script = document.createElement('script');
+            script.src = 'http://localhost:8002/static/chatbot-widget.js';
+            script.async = true;
+            document.head.appendChild(script);
+        })();
+    </script>
+</body>
+</html>

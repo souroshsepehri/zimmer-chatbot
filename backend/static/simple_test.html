@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تست ساده بات - خواندن پایگاه داده</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            width: 90%;
+            max-width: 800px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 { font-size: 2rem; margin-bottom: 10px; }
+        .header p { opacity: 0.9; }
+        
+        .content {
+            padding: 20px;
+        }
+        
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            background: #f9f9f9;
+        }
+        
+        .test-section h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        
+        .input-field {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        
+        .input-field:focus {
+            border-color: #667eea;
+        }
+        
+        .button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .button:hover {
+            background: #5a6fd8;
+        }
+        
+        .button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 8px;
+            background: #f0f8ff;
+            border-left: 4px solid #1976d2;
+        }
+        
+        .result.error {
+            background: #ffebee;
+            border-left-color: #c62828;
+        }
+        
+        .result.success {
+            background: #e8f5e8;
+            border-left-color: #4caf50;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        
+        .stats {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+        
+        .faq-item {
+            background: white;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 6px;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .faq-question {
+            font-weight: bold;
+            color: #1976d2;
+            margin-bottom: 5px;
+        }
+        
+        .faq-answer {
+            color: #555;
+            font-size: 0.9em;
+        }
+        
+        .faq-category {
+            color: #666;
+            font-size: 0.8em;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>تست ساده بات</h1>
+            <p>تست خواندن پایگاه داده و پاسخ‌دهی</p>
+        </div>
+        
+        <div class="content">
+            <!-- Database Test Section -->
+            <div class="test-section">
+                <h3>🔍 تست پایگاه داده</h3>
+                <button class="button" onclick="testDatabase()">تست اتصال به پایگاه داده</button>
+                <div id="dbResult"></div>
+            </div>
+            
+            <!-- Chat Test Section -->
+            <div class="test-section">
+                <h3>💬 تست چت</h3>
+                <div class="input-group">
+                    <label for="chatInput">سؤال خود را بنویسید:</label>
+                    <input type="text" id="chatInput" class="input-field" placeholder="مثال: چطور می‌تونم با شما تماس بگیرم؟" />
+                </div>
+                <button class="button" onclick="testChat()">ارسال سؤال</button>
+                <button class="button" onclick="testSampleQuestions()">تست سؤالات نمونه</button>
+                <div id="chatResult"></div>
+            </div>
+            
+            <!-- Stats Section -->
+            <div class="test-section">
+                <h3>📊 آمار</h3>
+                <button class="button" onclick="getStats()">نمایش آمار</button>
+                <div id="statsResult"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = window.location.origin + '/api';
+        
+        function showLoading(elementId) {
+            document.getElementById(elementId).innerHTML = '<div class="loading">در حال پردازش...</div>';
+        }
+        
+        function showResult(elementId, content, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="result ${type}">${content}</div>`;
+        }
+        
+        async function testDatabase() {
+            showLoading('dbResult');
+            
+            try {
+                const response = await fetch(`${API_BASE}/test-database`);
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    let content = `
+                        <h4>✅ اتصال موفق</h4>
+                        <p><strong>تعداد FAQ:</strong> ${data.faq_count}</p>
+                    `;
+                    
+                    if (data.sample_faqs && data.sample_faqs.length > 0) {
+                        content += '<h5>نمونه FAQ ها:</h5>';
+                        data.sample_faqs.forEach(faq => {
+                            content += `
+                                <div class="faq-item">
+                                    <div class="faq-question">${faq.question}</div>
+                                    <div class="faq-category">دسته: ${faq.category || 'عمومی'}</div>
+                                </div>
+                            `;
+                        });
+                    }
+                    
+                    showResult('dbResult', content, 'success');
+                } else {
+                    showResult('dbResult', `<h4>❌ خطا</h4><p>${data.message}</p>`, 'error');
+                }
+            } catch (error) {
+                showResult('dbResult', `<h4>❌ خطا در ارتباط</h4><p>${error.message}</p>`, 'error');
+            }
+        }
+        
+        async function testChat() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
+            if (!message) {
+                showResult('chatResult', '<h4>⚠️ لطفاً سؤالی وارد کنید</h4>', 'error');
+                return;
+            }
+            
+            showLoading('chatResult');
+            
+            try {
+                const response = await fetch(`${API_BASE}/simple-chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message })
+                });
+                
+                const data = await response.json();
+                
+                let content = `
+                    <h4>سؤال: ${message}</h4>
+                    <p><strong>پاسخ:</strong> ${data.answer}</p>
+                    <p><strong>منبع:</strong> ${data.source}</p>
+                    <p><strong>موفقیت:</strong> ${data.success ? 'بله' : 'خیر'}</p>
+                `;
+                
+                if (data.faq_id) {
+                    content += `<p><strong>شناسه FAQ:</strong> ${data.faq_id}</p>`;
+                }
+                
+                if (data.category) {
+                    content += `<p><strong>دسته:</strong> ${data.category}</p>`;
+                }
+                
+                if (data.score) {
+                    content += `<p><strong>امتیاز تطبیق:</strong> ${data.score.toFixed(2)}</p>`;
+                }
+                
+                showResult('chatResult', content, data.success ? 'success' : 'info');
+                
+            } catch (error) {
+                showResult('chatResult', `<h4>❌ خطا در ارتباط</h4><p>${error.message}</p>`, 'error');
+            }
+        }
+        
+        async function testSampleQuestions() {
+            const sampleQuestions = [
+                "چطور می‌تونم با شما تماس بگیرم؟",
+                "ساعت چند است؟",
+                "آیا می‌توانید به من کمک کنید؟",
+                "ممنون",
+                "سفارش چطور می‌دم؟"
+            ];
+            
+            showLoading('chatResult');
+            
+            let results = '<h4>نتایج تست سؤالات نمونه:</h4>';
+            
+            for (const question of sampleQuestions) {
+                try {
+                    const response = await fetch(`${API_BASE}/simple-chat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: question })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    results += `
+                        <div class="faq-item">
+                            <div class="faq-question">سؤال: ${question}</div>
+                            <div class="faq-answer">پاسخ: ${data.answer}</div>
+                            <div class="faq-category">منبع: ${data.source} | موفقیت: ${data.success ? 'بله' : 'خیر'}</div>
+                        </div>
+                    `;
+                    
+                } catch (error) {
+                    results += `
+                        <div class="faq-item" style="border-color: #c62828;">
+                            <div class="faq-question">سؤال: ${question}</div>
+                            <div class="faq-answer" style="color: #c62828;">خطا: ${error.message}</div>
+                        </div>
+                    `;
+                }
+            }
+            
+            showResult('chatResult', results, 'info');
+        }
+        
+        async function getStats() {
+            showLoading('statsResult');
+            
+            try {
+                const response = await fetch(`${API_BASE}/simple-stats`);
+                const data = await response.json();
+                
+                if (data.status === 'healthy') {
+                    let content = `
+                        <h4>✅ آمار سیستم</h4>
+                        <p><strong>وضعیت:</strong> ${data.status}</p>
+                        <p><strong>تعداد FAQ:</strong> ${data.faq_count}</p>
+                    `;
+                    
+                    if (data.faqs && data.faqs.length > 0) {
+                        content += '<h5>FAQ های موجود:</h5>';
+                        data.faqs.forEach(faq => {
+                            content += `
+                                <div class="faq-item">
+                                    <div class="faq-question">${faq.question}</div>
+                                    <div class="faq-category">دسته: ${faq.category || 'عمومی'}</div>
+                                </div>
+                            `;
+                        });
+                    }
+                    
+                    showResult('statsResult', content, 'success');
+                } else {
+                    showResult('statsResult', `<h4>❌ خطا</h4><p>${data.error}</p>`, 'error');
+                }
+            } catch (error) {
+                showResult('statsResult', `<h4>❌ خطا در ارتباط</h4><p>${error.message}</p>`, 'error');
+            }
+        }
+        
+        // Auto-test database on page load
+        window.onload = function() {
+            testDatabase();
+        };
+    </script>
+</body>
+</html>

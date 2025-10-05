@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 import sys
 import os
 
@@ -10,7 +10,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'backend'))
 # Import from backend modules
 try:
     from core.db import engine, Base
-    from routers import chat, faqs, logs
+    from routers import chat, faqs, logs, url_agent, simple_chat, dual_database
     from core.config import settings
     BACKEND_AVAILABLE = True
 except ImportError as e:
@@ -46,10 +46,76 @@ if BACKEND_AVAILABLE:
     app.include_router(chat.router, prefix="/api", tags=["chat"])
     app.include_router(faqs.router, prefix="/api", tags=["faqs"])
     app.include_router(logs.router, prefix="/api", tags=["logs"])
+    app.include_router(url_agent.router, prefix="/api", tags=["url-agent"])
+    app.include_router(simple_chat.router, prefix="/api", tags=["simple-chat"])
+    app.include_router(dual_database.router, prefix="/api", tags=["dual-database"])
 
 
 @app.get("/")
 async def root():
+    # Serve dual database interface
+    try:
+        with open("backend/static/dual_database_interface.html", "r", encoding="utf-8") as f:
+            html_content = f.read()
+        return HTMLResponse(content=html_content)
+    except FileNotFoundError:
+        # Fallback to simple test interface
+        try:
+            with open("backend/static/simple_test.html", "r", encoding="utf-8") as f:
+                html_content = f.read()
+            return HTMLResponse(content=html_content)
+        except FileNotFoundError:
+            # Final fallback to enhanced interface
+            try:
+                with open("backend/static/url_agent_interface.html", "r", encoding="utf-8") as f:
+                    html_content = f.read()
+                return HTMLResponse(content=html_content)
+            except FileNotFoundError:
+                # Final fallback to original simple interface
+                pass
+
+@app.get("/dashboard")
+async def dashboard():
+    """Serve the website management dashboard"""
+    try:
+        with open("backend/static/dashboard.html", "r", encoding="utf-8") as f:
+            html_content = f.read()
+        return HTMLResponse(content=html_content)
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>Dashboard not found</h1>", status_code=404)
+
+@app.get("/admin")
+async def admin_panel():
+    """Serve the admin panel (restricted access)"""
+    try:
+        with open("backend/static/admin_panel_new.html", "r", encoding="utf-8") as f:
+            html_content = f.read()
+        return HTMLResponse(content=html_content)
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>Admin panel not found</h1>", status_code=404)
+
+@app.get("/static/chatbot-widget.js")
+async def chatbot_widget():
+    """Serve the chatbot widget JavaScript"""
+    try:
+        with open("backend/static/chatbot-widget.js", "r", encoding="utf-8") as f:
+            js_content = f.read()
+        return Response(content=js_content, media_type="application/javascript")
+    except FileNotFoundError:
+        return Response(content="// Widget not found", media_type="application/javascript")
+
+@app.get("/example")
+async def example_website():
+    """Serve example website with chatbot widget"""
+    try:
+        with open("backend/static/example_website.html", "r", encoding="utf-8") as f:
+            html_content = f.read()
+        return HTMLResponse(content=html_content)
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>Example website not found</h1>", status_code=404)
+
+@app.get("/simple")
+async def simple_interface():
     # Serve simple HTML chatbot interface
     html_content = """
 <!DOCTYPE html>
