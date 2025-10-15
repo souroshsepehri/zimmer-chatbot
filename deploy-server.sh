@@ -44,16 +44,20 @@ check_requirements() {
         exit 1
     fi
     
-    # Check if Docker is installed
-    if ! command -v docker &> /dev/null; then
-        print_error "Docker is not installed. Please install Docker first."
+    # Check if Node.js is installed
+    if ! command -v node &> /dev/null; then
+        print_error "Node.js is not installed. Please install Node.js first."
         exit 1
     fi
     
-    # Check if Docker Compose is installed
-    if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-        print_error "Docker Compose is not installed. Please install Docker Compose first."
-        exit 1
+    # Check if PM2 is installed
+    if ! command -v pm2 &> /dev/null; then
+        print_status "Installing PM2..."
+        npm install -g pm2
+        if [ $? -ne 0 ]; then
+            print_error "Failed to install PM2. Please install manually: npm install -g pm2"
+            exit 1
+        fi
     fi
     
     # Check if Git is installed
@@ -91,31 +95,59 @@ create_directories() {
     print_status "Creating necessary directories..."
     
     mkdir -p backend/vectorstore
-    mkdir -p backend/logs
+    mkdir -p logs
     mkdir -p backups
     
     print_success "Directories created"
 }
 
-deploy_with_docker() {
-    print_status "Deploying with Docker..."
+deploy_with_pm2() {
+    print_status "Deploying with PM2..."
     
-    # Stop existing containers
-    print_status "Stopping existing containers..."
-    docker-compose down 2>/dev/null || true
+    # Install dependencies
+    print_status "Installing Python dependencies..."
+    pip install -r requirements.txt
+    if [ $? -ne 0 ]; then
+        print_error "Failed to install Python dependencies"
+        exit 1
+    fi
     
-    # Build and start services
-    print_status "Building and starting services..."
-    docker-compose up -d --build
+    # Install frontend dependencies if frontend directory exists
+    if [ -d "frontend" ]; then
+        print_status "Installing frontend dependencies..."
+        cd frontend
+        npm install
+        if [ $? -ne 0 ]; then
+            print_error "Failed to install frontend dependencies"
+            exit 1
+        fi
+        cd ..
+    fi
+    
+    print_success "Dependencies installed"
+    
+    # Stop existing processes
+    print_status "Stopping existing processes..."
+    pm2 delete all 2>/dev/null || true
+    
+    # Install PM2 log rotation
+    pm2 install pm2-logrotate 2>/dev/null || true
+    pm2 set pm2-logrotate:max_size 10M
+    pm2 set pm2-logrotate:retain 30
+    pm2 set pm2-logrotate:compress true
+    
+    # Start services
+    print_status "Starting services..."
+    pm2 start ecosystem.config.js --env production
     
     # Wait for services to start
     print_status "Waiting for services to start..."
     sleep 30
     
     # Check if services are running
-    if ! docker-compose ps | grep -q "Up"; then
+    if ! pm2 status | grep -q "online"; then
         print_error "Services failed to start"
-        docker-compose logs
+        pm2 logs
         exit 1
     fi
     
@@ -128,15 +160,15 @@ initialize_database() {
     # Wait for backend to be ready
     print_status "Waiting for backend to be ready..."
     for i in {1..30}; do
-        if docker-compose exec backend python -c "import requests; requests.get('http://localhost:8000/health')" 2>/dev/null; then
+        if curl -s http://localhost:8000/health >/dev/null 2>&1; then
             break
         fi
         sleep 2
     done
     
     # Initialize database
-    docker-compose exec backend python init_database.py
-    docker-compose exec backend python add_sample_data.py
+    python init_database.py
+    python add_sample_data.py
     
     print_success "Database initialized"
 }
@@ -244,19 +276,26 @@ show_status() {
     print_status "Deployment Status:"
     echo
     echo "Services:"
-    docker-compose ps
+    pm2 status
     echo
     echo "Access URLs:"
     echo "  Frontend: http://localhost:3000"
     echo "  Backend API: http://localhost:8000/api"
     echo "  Health Check: http://localhost:8000/health"
-    echo "  Nginx Proxy: http://localhost"
     echo
     echo "Useful Commands:"
-    echo "  View logs: docker-compose logs -f"
-    echo "  Stop services: docker-compose down"
-    echo "  Restart services: docker-compose restart"
-    echo "  Update services: docker-compose pull && docker-compose up -d"
+    echo "  View logs: pm2 logs"
+    echo "  Stop services: pm2 stop all"
+    echo "  Restart services: pm2 restart all"
+    echo "  Monitor services: pm2 monit"
+    echo "  Update services: git pull && pm2 reload all"
+    echo
+    echo "PM2 Commands:"
+    echo "  pm2 status          - Check service status"
+    echo "  pm2 logs            - View logs"
+    echo "  pm2 monit           - Monitor services"
+    echo "  pm2 restart all     - Restart all services"
+    echo "  pm2 stop all        - Stop all services"
 }
 
 create_management_scripts() {
@@ -266,8 +305,8 @@ create_management_scripts() {
     cat > start-chatbot.sh << 'EOF'
 #!/bin/bash
 echo "Starting Persian Chatbot..."
-docker-compose up -d
-echo "Services started. Access at http://localhost"
+pm2 start ecosystem.config.js --env production
+echo "Services started. Access at http://localhost:3000"
 EOF
     chmod +x start-chatbot.sh
     
@@ -275,7 +314,7 @@ EOF
     cat > stop-chatbot.sh << 'EOF'
 #!/bin/bash
 echo "Stopping Persian Chatbot..."
-docker-compose down
+pm2 stop all
 echo "Services stopped"
 EOF
     chmod +x stop-chatbot.sh
@@ -284,8 +323,7 @@ EOF
     cat > restart-chatbot.sh << 'EOF'
 #!/bin/bash
 echo "Restarting Persian Chatbot..."
-docker-compose down
-docker-compose up -d
+pm2 restart all
 echo "Services restarted"
 EOF
     chmod +x restart-chatbot.sh
@@ -295,8 +333,8 @@ EOF
 #!/bin/bash
 echo "Updating Persian Chatbot..."
 git pull origin main
-docker-compose down
-docker-compose up -d --build
+pip install -r requirements.txt
+pm2 reload all
 echo "Update completed"
 EOF
     chmod +x update-chatbot.sh
@@ -312,14 +350,16 @@ mkdir -p $BACKUP_DIR
 echo "Creating backup..."
 
 # Backup database
-docker-compose exec backend cp /app/app.db /app/backup_$DATE.db
-docker cp $(docker-compose ps -q backend):/app/backup_$DATE.db $BACKUP_DIR/
+cp app.db $BACKUP_DIR/app-$DATE.db
+
+# Backup PM2 configuration
+pm2 save
+cp ~/.pm2/dump.pm2 $BACKUP_DIR/pm2-config-$DATE.pm2
 
 # Backup vectorstore
-docker-compose exec backend tar -czf /app/vectorstore_$DATE.tar.gz /app/vectorstore
-docker cp $(docker-compose ps -q backend):/app/vectorstore_$DATE.tar.gz $BACKUP_DIR/
+tar -czf $BACKUP_DIR/vectorstore-$DATE.tar.gz vectorstore/
 
-echo "Backup completed: $BACKUP_DIR/backup_$DATE.db"
+echo "Backup completed: $BACKUP_DIR/app-$DATE.db"
 EOF
     chmod +x backup-chatbot.sh
     
@@ -336,9 +376,8 @@ main() {
     check_requirements
     setup_environment
     create_directories
-    deploy_with_docker
+    deploy_with_pm2
     initialize_database
-    setup_nginx
     test_deployment
     create_management_scripts
     show_status

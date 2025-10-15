@@ -10,7 +10,7 @@ A modern Persian chatbot built with FastAPI backend and Next.js frontend, featur
 - 📊 **Comprehensive Logging** - Track all chat interactions and analytics
 - 🎨 **Modern UI** - Beautiful, responsive interface with Tailwind CSS
 - 🔐 **Admin Panel** - Secure admin interface for managing content
-- 🐳 **Docker Support** - Easy deployment with Docker and Docker Compose
+- 🚀 **PM2 Process Management** - Production-ready process management with auto-restart and monitoring
 
 ## Tech Stack
 
@@ -28,10 +28,11 @@ A modern Persian chatbot built with FastAPI backend and Next.js frontend, featur
 - **Tailwind CSS** - Utility-first CSS
 - **Lucide React** - Beautiful icons
 
-## Quick Start with Docker
+## Quick Start with PM2
 
 ### Prerequisites
-- Docker and Docker Compose installed
+- Node.js 18+ installed
+- Python 3.9+ installed
 - OpenAI API key
 
 ### 1. Clone the Repository
@@ -46,16 +47,21 @@ Create a `.env` file in the root directory:
 OPENAI_API_KEY=your_openai_api_key_here
 ```
 
-### 3. Run with Docker Compose
+### 3. Run with PM2
 ```bash
-docker-compose up --build
+# Install PM2 globally
+npm install -g pm2
+
+# Start all services
+npm start
 ```
 
 This will:
-- Build both backend and frontend containers
+- Install all Python and Node.js dependencies
 - Start the backend on http://localhost:8000
 - Start the frontend on http://localhost:3000
-- Set up automatic health checks and restarts
+- Set up automatic process management with PM2
+- Configure log rotation and monitoring
 
 ### 4. Access the Application
 - **Frontend**: http://localhost:3000
