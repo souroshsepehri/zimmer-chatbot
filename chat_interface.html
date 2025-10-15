@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ربات هوشمند فارسی - Chat Interface</title>
+    <style>
+        body {
+            font-family: 'Tahoma', 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        
+        .status {
+            background: #e8f5e8;
+            padding: 10px;
+            text-align: center;
+            color: #2e7d32;
+            font-weight: bold;
+        }
+        
+        .chat-container {
+            height: 400px;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f9f9f9;
+        }
+        
+        .message {
+            margin: 10px 0;
+            padding: 10px 15px;
+            border-radius: 10px;
+            max-width: 80%;
+        }
+        
+        .user-message {
+            background: #007bff;
+            color: white;
+            margin-left: auto;
+            text-align: right;
+        }
+        
+        .bot-message {
+            background: white;
+            border: 1px solid #ddd;
+            margin-right: auto;
+        }
+        
+        .message-info {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .input-container {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #eee;
+        }
+        
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+        
+        input[type="text"] {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+        }
+        
+        input[type="text"]:focus {
+            border-color: #4CAF50;
+        }
+        
+        button {
+            padding: 12px 25px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        
+        button:hover {
+            background: #45a049;
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .quick-questions {
+            padding: 15px;
+            background: #f0f8ff;
+            border-top: 1px solid #ddd;
+        }
+        
+        .quick-questions h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        
+        .quick-btn {
+            display: inline-block;
+            margin: 5px;
+            padding: 8px 15px;
+            background: #e3f2fd;
+            color: #1976d2;
+            border: 1px solid #bbdefb;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .quick-btn:hover {
+            background: #bbdefb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 ربات هوشمند فارسی</h1>
+            <p>پاسخ‌های هوشمند با تشخیص قصد کاربر</p>
+        </div>
+        
+        <div class="status" id="status">
+            🔗 در حال اتصال به سرور...
+        </div>
+        
+        <div class="chat-container" id="chatContainer">
+            <div class="message bot-message">
+                <div>سلام! ربات هوشمند زیمر هستم. چطور می‌تونم کمکتون کنم؟</div>
+                <div class="message-info">سیستم آماده و متصل است ✅</div>
+            </div>
+        </div>
+        
+        <div class="quick-questions">
+            <h3>سؤالات سریع:</h3>
+            <span class="quick-btn" onclick="sendQuickMessage('قیمت')">قیمت محصولات</span>
+            <span class="quick-btn" onclick="sendQuickMessage('گارانتی')">گارانتی</span>
+            <span class="quick-btn" onclick="sendQuickMessage('سفارش')">سفارش</span>
+            <span class="quick-btn" onclick="sendQuickMessage('تماس')">تماس با ما</span>
+            <span class="quick-btn" onclick="sendQuickMessage('ساعت کاری')">ساعت کاری</span>
+        </div>
+        
+        <div class="input-container">
+            <div class="input-group">
+                <input type="text" id="messageInput" placeholder="سؤال خود را بنویسید..." onkeypress="handleKeyPress(event)">
+                <button onclick="sendMessage()" id="sendBtn">ارسال</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8004/api/chat';
+        const STATUS_URL = 'http://localhost:8004/api/status';
+        
+        let isConnected = false;
+        
+        // Check connection status
+        async function checkStatus() {
+            try {
+                const response = await fetch(STATUS_URL);
+                const data = await response.json();
+                
+                if (data.status === 'online') {
+                    document.getElementById('status').innerHTML = 
+                        `✅ متصل - پایگاه داده: ${data.database} - ${data.faqs_loaded} سؤال آماده`;
+                    isConnected = true;
+                } else {
+                    document.getElementById('status').innerHTML = 
+                        `❌ خطا در اتصال: ${data.error || 'نامشخص'}`;
+                    isConnected = false;
+                }
+            } catch (error) {
+                document.getElementById('status').innerHTML = 
+                    `❌ سرور در دسترس نیست - لطفاً سرور را راه‌اندازی کنید`;
+                isConnected = false;
+            }
+        }
+        
+        // Send message
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            if (!isConnected) {
+                addMessage('خطا: سرور متصل نیست. لطفاً ابتدا سرور را راه‌اندازی کنید.', 'bot', false);
+                return;
+            }
+            
+            // Add user message
+            addMessage(message, 'user');
+            input.value = '';
+            
+            // Disable send button
+            const sendBtn = document.getElementById('sendBtn');
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'در حال پردازش...';
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        debug: true
+                    })
+                });
+                
+                const data = await response.json();
+                
+                // Add bot response
+                let botMessage = data.answer;
+                let messageInfo = `منبع: ${data.source}`;
+                
+                if (data.intent) {
+                    messageInfo += ` | قصد: ${data.intent}`;
+                }
+                if (data.confidence) {
+                    messageInfo += ` | اطمینان: ${(data.confidence * 100).toFixed(0)}%`;
+                }
+                if (data.context) {
+                    messageInfo += ` | زمینه: ${data.context}`;
+                }
+                
+                addMessage(botMessage, 'bot', data.success, messageInfo);
+                
+            } catch (error) {
+                addMessage('خطا در ارتباط با سرور. لطفاً دوباره تلاش کنید.', 'bot', false);
+            }
+            
+            // Re-enable send button
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'ارسال';
+        }
+        
+        // Send quick message
+        function sendQuickMessage(message) {
+            document.getElementById('messageInput').value = message;
+            sendMessage();
+        }
+        
+        // Add message to chat
+        function addMessage(text, sender, success = true, info = '') {
+            const chatContainer = document.getElementById('chatContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+            
+            let messageHtml = `<div>${text}</div>`;
+            if (info) {
+                messageHtml += `<div class="message-info">${info}</div>`;
+            }
+            
+            messageDiv.innerHTML = messageHtml;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        
+        // Handle Enter key
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+        
+        // Check status on load and every 30 seconds
+        checkStatus();
+        setInterval(checkStatus, 30000);
+    </script>
+</body>
+</html>

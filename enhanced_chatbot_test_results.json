@@ -1,0 +1,56 @@
+[
+  {
+    "query": "قیمت",
+    "expected_intent": "pricing",
+    "detected_intent": "pricing",
+    "confidence": 1.0,
+    "success": true,
+    "intent_correct": true,
+    "answer_length": 138
+  },
+  {
+    "query": "گارانتی",
+    "expected_intent": "warranty",
+    "detected_intent": "warranty",
+    "confidence": 1.0,
+    "success": true,
+    "intent_correct": true,
+    "answer_length": 132
+  },
+  {
+    "query": "سفارش",
+    "expected_intent": "order",
+    "detected_intent": "order",
+    "confidence": 1.0,
+    "success": true,
+    "intent_correct": true,
+    "answer_length": 162
+  },
+  {
+    "query": "تماس",
+    "expected_intent": "contact",
+    "detected_intent": "contact",
+    "confidence": 1.0,
+    "success": true,
+    "intent_correct": true,
+    "answer_length": 142
+  },
+  {
+    "query": "کمک",
+    "expected_intent": "support",
+    "detected_intent": "support",
+    "confidence": 1.0,
+    "success": true,
+    "intent_correct": true,
+    "answer_length": 62
+  },
+  {
+    "query": "ساعت",
+    "expected_intent": "hours",
+    "detected_intent": "hours",
+    "confidence": 1.0,
+    "success": true,
+    "intent_correct": true,
+    "answer_length": 95
+  }
+]

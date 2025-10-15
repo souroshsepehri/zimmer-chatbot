@@ -1,0 +1,9 @@
+Component,Type,Technology,Version,Port,Features
+Backend API,Service,FastAPI,0.104.1,8000 (dev) 80/443 (prod),Chat endpoint FAQ management Analytics Health checks
+Frontend Interface,Application,Next.js,14.2.5,3000 (dev) 80/443 (prod),Chat widget Admin dashboard RTL support Responsive design
+Database Layer,Storage,SQLite,Latest,Internal,Vector storage Audit trail Performance indexes
+AI Engine,Service,OpenAI GPT-4,Latest,API,Intent detection FAQ retrieval Answer generation
+Admin Panel,Interface,React,18.3.1,3000,FAQ management Analytics User monitoring System health
+Vector Store,Storage,FAISS,Latest,Internal,Semantic search Embedding storage Similarity matching
+Intent Detection,Service,Custom,1.0,Internal,Keyword classification Confidence scoring Fallback mechanisms
+Answer Generation,Service,OpenAI,Latest,API,Context-aware responses Persian optimization Quality validation

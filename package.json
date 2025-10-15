@@ -22,7 +22,18 @@
     "install:logrotate": "pm2 install pm2-logrotate",
     "health": "pm2 jlist | jq '.[] | select(.name | contains(\"chatbot\")) | {name, status, uptime}'",
     "backup": "pm2 save && cp ~/.pm2/dump.pm2 ./backups/",
-    "update": "git pull && pm2 reload all"
+    "update": "git pull && pm2 reload all",
+    "debug": "python debug_chatbot.py",
+    "debug:manager": "debug_manager.bat",
+    "debug:interface": "start http://localhost:8000/api/debug/interface",
+    "debug:logs": "pm2 logs --lines 50",
+    "debug:status": "curl -s http://localhost:8000/api/debug/status | jq .",
+    "debug:test": "curl -X POST \"http://localhost:8000/api/debug/test/response?message=سلام&chatbot_type=simple\" | jq .",
+    "smart-agent": "start http://localhost:8000/api/smart-agent/interface",
+    "smart-agent:test": "curl -X POST \"http://localhost:8000/api/smart-agent/chat\" -H \"Content-Type: application/json\" -d \"{\\\"message\\\": \\\"Hello, how are you?\\\", \\\"style\\\": \\\"casual\\\"}\" | jq .",
+    "smart-agent:styles": "curl -s http://localhost:8000/api/smart-agent/styles | jq .",
+    "smart-agent:status": "curl -s http://localhost:8000/api/smart-agent/status | jq .",
+    "api-keys": "python setup_api_keys.py"
   },
   "keywords": [
     "chatbot",

@@ -9,6 +9,12 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     embedding_model: str = "text-embedding-3-small"
     
+    # External API Configuration
+    external_api_url: str = os.getenv("EXTERNAL_API_URL", "http://85.208.254.187")
+    external_api_port: int = int(os.getenv("EXTERNAL_API_PORT", "8000"))
+    external_api_timeout: int = int(os.getenv("EXTERNAL_API_TIMEOUT", "30"))
+    external_api_enabled: bool = os.getenv("EXTERNAL_API_ENABLED", "false").lower() == "true"
+    
     # Retrieval Configuration
     retrieval_top_k: int = 4
     retrieval_threshold: float = 0.82

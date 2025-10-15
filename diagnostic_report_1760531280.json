@@ -1,0 +1,14 @@
+{
+  "timestamp": "2025-10-15T15:58:00.027551",
+  "database_check": {
+    "accessible": true,
+    "total_faqs": 15,
+    "active_faqs": 15,
+    "categories": 6
+  },
+  "services_check": {},
+  "configuration_check": {},
+  "recommendations": [
+    "Set OPENAI_API_KEY environment variable"
+  ]
+}

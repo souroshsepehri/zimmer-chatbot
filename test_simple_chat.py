@@ -14,7 +14,7 @@ def test_simple_chat():
         time.sleep(2)
         
         # Test with a simple message
-        response = requests.post("http://localhost:8000/api/chat", json={
+        response = requests.post("http://localhost:8002/api/chat", json={
             "message": "سفارش",
             "debug": True
         })

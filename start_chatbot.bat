@@ -1,22 +1,39 @@
 @echo off
 echo ========================================
-echo    Starting Persian Chatbot
+echo    STARTING PERSIAN CHATBOT SERVER
 echo ========================================
 echo.
 
-echo Setting OpenAI API Key...
-set OPENAI_API_KEY=%OPENAI_API_KEY%
+echo [1/3] Stopping any existing servers...
+taskkill /F /IM python.exe 2>nul
+
+echo [2/3] Starting chatbot server...
+start /B python simple_reliable_server.py
+
+echo [3/3] Waiting for server to start...
+timeout /t 8 /nobreak > nul
 
 echo.
-echo Testing intent system...
-python -c "from services.intent import intent_detector; result = intent_detector.detect('سلام'); print('Intent test:', result['label'], result['confidence'])"
+echo ========================================
+echo    SERVER STATUS CHECK
+echo ========================================
+netstat -an | findstr :8004
+if %errorlevel% equ 0 (
+    echo ✅ SERVER IS RUNNING ON PORT 8004
+    echo.
+    echo 🌐 Test URLs:
+    echo    http://localhost:8004/api/status
+    echo    http://localhost:8004/api/chat
+    echo.
+    echo 💬 Opening test interface...
+    start "" "simple_test.html"
+    echo.
+    echo ✅ CHATBOT IS READY TO USE!
+) else (
+    echo ❌ SERVER FAILED TO START
+    echo Please check for errors above
+)
 
 echo.
-echo Starting server on port 8002...
-echo Server will be available at: http://127.0.0.1:8002
-echo API docs: http://127.0.0.1:8002/docs
-echo.
-echo Press Ctrl+C to stop the server
-echo.
-
-python -m uvicorn app:app --host 127.0.0.1 --port 8002 --reload
+echo Press any key to continue...
+pause > nul

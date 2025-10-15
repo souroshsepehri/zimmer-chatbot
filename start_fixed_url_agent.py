@@ -112,7 +112,7 @@ def main():
     # Start the server
     port = int(os.environ.get("PORT", 8002))
     uvicorn.run(
-        "main:app",
+        "backend.app:app",
         host="0.0.0.0",
         port=port,
         reload=True,

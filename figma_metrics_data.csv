@@ -1,0 +1,20 @@
+Category,Metric,Value,Description
+Performance,Response Time,<2 seconds,For FAQ queries
+Performance,Concurrent Users,100+,Simultaneous users supported
+Performance,Memory Usage,~200MB base,+ 50MB per 1000 FAQs
+Performance,Storage,~1MB per 1000 FAQs,With embeddings
+ROI,Support Load Reduction,60-80%,Reduction in routine inquiries
+ROI,Response Time,<2 seconds,Average response time
+ROI,Success Rate,>90%,Questions answered correctly
+ROI,System Uptime,99%+,System availability
+Technology,Backend Framework,FastAPI 0.104.1,High-performance web framework
+Technology,Frontend Framework,Next.js 14.2.5,Modern web application framework
+Technology,AI Model,OpenAI GPT-4o-mini,Advanced language understanding
+Technology,Database,SQLite with PostgreSQL option,Reliable data storage
+Security,API Security,CORS + Validation,Input validation and CORS configuration
+Security,Data Protection,Environment Variables,Secure API key storage
+Security,Authentication,JWT Ready,Planned JWT token authentication
+Deployment,Docker,Recommended,Backend + Frontend + Database
+Deployment,Vercel,Serverless,Serverless functions with Python 3.11
+Deployment,Render,Web Service,Python 3.11 environment with persistence
+Deployment,Manual Server,Traditional,Nginx reverse proxy with SSL

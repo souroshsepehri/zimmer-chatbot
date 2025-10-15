@@ -5,6 +5,7 @@ Simple chat router for reliable database reading
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from services.simple_chatbot import get_simple_chatbot
+from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)

@@ -1,0 +1,74 @@
+[
+  {
+    "query": "سلام",
+    "expected_intent": "greeting",
+    "detected_intent": "error",
+    "confidence": 0,
+    "success": false,
+    "intent_correct": false,
+    "answer_length": 0
+  },
+  {
+    "query": "قیمت محصولات شما چقدر است؟",
+    "expected_intent": "pricing",
+    "detected_intent": "error",
+    "confidence": 0,
+    "success": false,
+    "intent_correct": false,
+    "answer_length": 0
+  },
+  {
+    "query": "گارانتی دارید؟",
+    "expected_intent": "warranty",
+    "detected_intent": "error",
+    "confidence": 0,
+    "success": false,
+    "intent_correct": false,
+    "answer_length": 0
+  },
+  {
+    "query": "چطور سفارش بدم؟",
+    "expected_intent": "order",
+    "detected_intent": "error",
+    "confidence": 0,
+    "success": false,
+    "intent_correct": false,
+    "answer_length": 0
+  },
+  {
+    "query": "ساعات کاری شما چیه؟",
+    "expected_intent": "hours",
+    "detected_intent": "error",
+    "confidence": 0,
+    "success": false,
+    "intent_correct": false,
+    "answer_length": 0
+  },
+  {
+    "query": "چطور می‌تونم با شما تماس بگیرم؟",
+    "expected_intent": "contact",
+    "detected_intent": "error",
+    "confidence": 0,
+    "success": false,
+    "intent_correct": false,
+    "answer_length": 0
+  },
+  {
+    "query": "کمک می‌خوام",
+    "expected_intent": "support",
+    "detected_intent": "error",
+    "confidence": 0,
+    "success": false,
+    "intent_correct": false,
+    "answer_length": 0
+  },
+  {
+    "query": "محصولات شما چه ویژگی‌هایی دارن؟",
+    "expected_intent": "product_info",
+    "detected_intent": "error",
+    "confidence": 0,
+    "success": false,
+    "intent_correct": false,
+    "answer_length": 0
+  }
+]

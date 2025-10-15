@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from services.intent import intent_detector
 from services.retriever import faq_retriever
 from services.simple_retriever import simple_faq_retriever
+from services.simple_chatbot import get_simple_chatbot
 from services.answer import answer_generator
 from schemas.chat import DebugInfo, IntentResult, RetrievalResult
 from core.config import settings
@@ -19,7 +20,78 @@ class ChatChain:
         debug: bool = False,
         category_filter: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Process user message through the complete chain"""
+        """Process user message through the enhanced simple chatbot"""
+        
+        print(f"DEBUG: Processing message: {message}")
+        
+        try:
+            # Use the enhanced simple chatbot with intent detection
+            simple_chatbot = get_simple_chatbot()
+            # Ensure the chatbot has access to the database session
+            simple_chatbot.db_session = db
+            result = simple_chatbot.get_answer(message)
+            
+            print(f"DEBUG: Enhanced chatbot result: {result}")
+            
+            # Convert the result to match the expected format
+            response = {
+                "answer": result["answer"],
+                "source": result["source"],
+                "success": result["success"],
+                "matched_faq_id": result.get("faq_id"),
+                "unanswered_in_db": not result["success"],
+                "retrieval_results": result.get("all_matches", []),
+                # Enhanced fields from intent detection
+                "intent": {
+                    "label": result.get("intent", "unknown"),
+                    "confidence": result.get("confidence", 0.0)
+                },
+                "context": result.get("context"),
+                "intent_match": result.get("intent_match")
+            }
+            
+            # Prepare debug info if requested
+            if debug:
+                retrieval_results_formatted = [
+                    RetrievalResult(
+                        faq_id=r["id"],
+                        question=r["question"],
+                        answer=r["answer"],
+                        score=r["score"],
+                        category=r["category"]
+                    ) for r in result.get("all_matches", [])
+                ]
+                
+                intent_result = IntentResult(
+                    label=result.get("intent", "unknown"),
+                    confidence=result.get("confidence", 0.0)
+                )
+                
+                debug_info = DebugInfo(
+                    intent=intent_result,
+                    source=result["source"],
+                    retrieval_results=retrieval_results_formatted,
+                    success=result["success"],
+                    unanswered_in_db=not result["success"]
+                )
+                
+                response["debug_info"] = debug_info.dict() if debug_info else None
+            
+            return response
+            
+        except Exception as e:
+            print(f"DEBUG: Enhanced chatbot failed: {e}")
+            # Fallback to original method if enhanced chatbot fails
+            return self._fallback_process_message(message, db, debug, category_filter)
+    
+    def _fallback_process_message(
+        self, 
+        message: str, 
+        db: Session, 
+        debug: bool = False,
+        category_filter: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Fallback processing method using original logic"""
         
         # 1. Intent Detection (skip if no API key)
         try:
@@ -31,7 +103,7 @@ class ChatChain:
         
         # 2. FAQ Retrieval - Always check database first with simple search
         retrieval_results = []
-        print(f"DEBUG: Processing message: {message}")
+        print(f"DEBUG: Fallback processing message: {message}")
         
         # Always try simple search first (more reliable for Persian text)
         try:

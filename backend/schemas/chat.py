@@ -12,6 +12,17 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     debug_info: Optional[Dict[str, Any]] = None
+    # Enhanced fields from smart intent detection
+    intent: Optional[str] = None
+    confidence: Optional[float] = None
+    context: Optional[str] = None
+    intent_match: Optional[bool] = None
+    source: Optional[str] = None
+    success: Optional[bool] = None
+    matched_faq_id: Optional[int] = None
+    question: Optional[str] = None
+    category: Optional[str] = None
+    score: Optional[float] = None
 
 
 class IntentResult(BaseModel):

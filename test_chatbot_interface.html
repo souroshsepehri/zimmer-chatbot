@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تست بات هوشمند</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .test-button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .test-button:hover {
+            background-color: #2980b9;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧠 تست بات هوشمند با تشخیص نیت</h1>
+        
+        <div class="test-section">
+            <h3>🔍 تست اتصال به سرور</h3>
+            <button class="test-button" onclick="testServerConnection()">تست اتصال</button>
+            <div id="serverResult" class="result" style="display: none;"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>💬 تست چت بات</h3>
+            <button class="test-button" onclick="testChatbot('قیمت')">تست: قیمت</button>
+            <button class="test-button" onclick="testChatbot('گارانتی')">تست: گارانتی</button>
+            <button class="test-button" onclick="testChatbot('سفارش')">تست: سفارش</button>
+            <button class="test-button" onclick="testChatbot('تماس')">تست: تماس</button>
+            <button class="test-button" onclick="testChatbot('کمک')">تست: کمک</button>
+            <button class="test-button" onclick="testChatbot('ساعت')">تست: ساعت</button>
+            <div id="chatResult" class="result" style="display: none;"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🎯 تست تشخیص نیت</h3>
+            <button class="test-button" onclick="testIntentDetection()">تست تشخیص نیت</button>
+            <div id="intentResult" class="result" style="display: none;"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>📊 تست پایگاه داده</h3>
+            <button class="test-button" onclick="testDatabase()">تست پایگاه داده</button>
+            <div id="dbResult" class="result" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8002/api';
+        
+        function showResult(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            element.className = `result ${type}`;
+            element.textContent = message;
+        }
+        
+        async function testServerConnection() {
+            try {
+                const response = await fetch(`${API_BASE}/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: 'سلام',
+                        debug: true
+                    })
+                });
+                
+                if (response.ok) {
+                    showResult('serverResult', '✅ سرور در حال اجرا است و پاسخ می‌دهد', 'success');
+                } else {
+                    showResult('serverResult', `❌ خطا در سرور: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                showResult('serverResult', `❌ خطا در اتصال: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testChatbot(message) {
+            try {
+                const response = await fetch(`${API_BASE}/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        debug: true
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const result = `
+✅ پیام: ${message}
+🎯 نیت: ${data.intent || 'نامشخص'}
+📊 اطمینان: ${data.confidence || 0}
+🔍 منبع: ${data.source || 'نامشخص'}
+✅ موفقیت: ${data.success ? 'بله' : 'خیر'}
+📝 پاسخ: ${data.answer || 'پاسخی دریافت نشد'}
+💡 زمینه: ${data.context || 'نامشخص'}
+                    `;
+                    showResult('chatResult', result, 'success');
+                } else {
+                    showResult('chatResult', `❌ خطا در چت: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                showResult('chatResult', `❌ خطا در چت: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testIntentDetection() {
+            const testMessages = ['قیمت', 'گارانتی', 'سفارش', 'تماس', 'کمک', 'ساعت'];
+            let results = '🎯 نتایج تشخیص نیت:\n\n';
+            
+            for (const message of testMessages) {
+                try {
+                    const response = await fetch(`${API_BASE}/chat`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            message: message,
+                            debug: true
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        results += `"${message}" → ${data.intent || 'نامشخص'} (${data.confidence || 0})\n`;
+                    } else {
+                        results += `"${message}" → خطا: ${response.status}\n`;
+                    }
+                } catch (error) {
+                    results += `"${message}" → خطا: ${error.message}\n`;
+                }
+            }
+            
+            showResult('intentResult', results, 'info');
+        }
+        
+        async function testDatabase() {
+            try {
+                // Test with a simple query
+                const response = await fetch(`${API_BASE}/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: 'قیمت',
+                        debug: true
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        showResult('dbResult', '✅ پایگاه داده در دسترس است و پاسخ می‌دهد', 'success');
+                    } else {
+                        showResult('dbResult', '⚠️ پایگاه داده در دسترس است اما پاسخ مناسبی پیدا نشد', 'info');
+                    }
+                } else {
+                    showResult('dbResult', `❌ خطا در دسترسی به پایگاه داده: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                showResult('dbResult', `❌ خطا در دسترسی به پایگاه داده: ${error.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>

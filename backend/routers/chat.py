@@ -2,10 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from schemas.chat import ChatRequest, ChatResponse
 from services.chain import chat_chain
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+from services.debugger import debugger
 from models.log import ChatLog
 from core.db import get_db
 from datetime import datetime
 import json
+import time
 
 router = APIRouter()
 
@@ -16,6 +22,9 @@ async def chat(
     db: Session = Depends(get_db)
 ):
     """Process chat message and return response"""
+    start_time = time.time()
+    session_id = getattr(request, 'session_id', 'default_session')
+    
     try:
         # Process message through chain
         result = chat_chain.process_message(
@@ -63,10 +72,43 @@ async def chat(
             # Ensure the answer is properly encoded for JSON response
             answer = answer.encode('utf-8').decode('utf-8')
         
+        # Log to debugger
+        response_time = time.time() - start_time
+        debugger.log_request(
+            session_id=session_id,
+            user_message=request.message,
+            response=answer,
+            response_time=response_time,
+            intent_detected=result.get("intent", {}).get("label") if isinstance(result.get("intent"), dict) else result.get("intent"),
+            faq_matches=result.get("retrieval_results", []),
+            search_scores=[r.get("score", 0) for r in result.get("retrieval_results", [])],
+            debug_info=result.get("debug_info", {})
+        )
+        
         return ChatResponse(
             answer=answer,
-            debug_info=result["debug_info"]
+            debug_info=result.get("debug_info"),
+            # Enhanced fields from smart intent detection
+            intent=result.get("intent", {}).get("label") if isinstance(result.get("intent"), dict) else result.get("intent"),
+            confidence=result.get("intent", {}).get("confidence") if isinstance(result.get("intent"), dict) else result.get("confidence"),
+            context=result.get("context"),
+            intent_match=result.get("intent_match"),
+            source=result.get("source"),
+            success=result.get("success"),
+            matched_faq_id=result.get("matched_faq_id"),
+            question=result.get("question"),
+            category=result.get("category"),
+            score=result.get("score")
         )
         
     except Exception as e:
+        # Log error to debugger
+        response_time = time.time() - start_time
+        debugger.log_request(
+            session_id=session_id,
+            user_message=request.message,
+            response="",
+            response_time=response_time,
+            error_message=str(e)
+        )
         raise HTTPException(status_code=500, detail=f"Chat processing error: {str(e)}")

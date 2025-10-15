@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from models.faq import FAQ
 from core.db import get_db
+from .smart_intent_detector import get_smart_intent_detector
 import logging
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,11 @@ class SimpleChatbot:
     def load_faqs_from_db(self) -> bool:
         """Load FAQs directly from database with error handling"""
         try:
-            db = next(get_db())
+            # Use provided database session or create a new one
+            if hasattr(self, 'db_session') and self.db_session:
+                db = self.db_session
+            else:
+                db = next(get_db())
             
             # Get all active FAQs
             faqs = db.query(FAQ).filter(FAQ.is_active == True).all()
@@ -45,7 +50,9 @@ class SimpleChatbot:
                     "category": category_name
                 })
             
-            db.close()
+            # Only close the database session if we created it
+            if not (hasattr(self, 'db_session') and self.db_session):
+                db.close()
             logger.info(f"Loaded {len(self.faqs)} FAQs from database")
             return True
             
@@ -124,7 +131,7 @@ class SimpleChatbot:
         return results[:3]
     
     def get_answer(self, question: str) -> Dict[str, Any]:
-        """Get answer for a question"""
+        """Get answer for a question with smart intent detection"""
         try:
             # Load FAQs fresh from database
             if not self.load_faqs_from_db():
@@ -134,12 +141,28 @@ class SimpleChatbot:
                     "success": False
                 }
             
+            # Detect user intent
+            try:
+                intent_detector = get_smart_intent_detector()
+                intent_result = intent_detector.detect_intent(question)
+                logger.info(f"Detected intent: {intent_result.intent.value} (confidence: {intent_result.confidence:.2f})")
+            except Exception as e:
+                logger.warning(f"Intent detection failed: {e}")
+                intent_result = None
+            
             # Search for matching FAQs
             results = self.search_faqs(question)
             
             if results:
-                # Use the best match
-                best_match = results[0]
+                # Smart ranking based on intent
+                if intent_result:
+                    # Rank results based on intent
+                    ranked_results = intent_detector.rank_answers(intent_result, results)
+                    best_match = ranked_results[0]
+                else:
+                    # Use original ranking if intent detection fails
+                    best_match = results[0]
+                
                 return {
                     "answer": best_match["answer"],
                     "source": "faq",
@@ -147,7 +170,11 @@ class SimpleChatbot:
                     "faq_id": best_match["id"],
                     "question": best_match["question"],
                     "category": best_match["category"],
-                    "score": best_match["score"],
+                    "score": best_match.get("final_score", best_match.get("score", 0)),
+                    "intent": intent_result.intent.value if intent_result else "unknown",
+                    "confidence": intent_result.confidence if intent_result else 0.0,
+                    "context": intent_result.context if intent_result else None,
+                    "intent_match": best_match.get("intent_match", False) if intent_result else None,
                     "all_matches": results
                 }
             else:
@@ -155,6 +182,9 @@ class SimpleChatbot:
                     "answer": self.fallback_answer,
                     "source": "fallback",
                     "success": False,
+                    "intent": intent_result.intent.value if intent_result else "unknown",
+                    "confidence": intent_result.confidence if intent_result else 0.0,
+                    "context": intent_result.context if intent_result else None,
                     "all_matches": []
                 }
                 

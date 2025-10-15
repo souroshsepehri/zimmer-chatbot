@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from core.db import engine, Base
-from routers import chat, faqs, logs
+from routers import chat, faqs, logs, smart_chat, simple_chat, external_api, debug, smart_agent, api_integration
 from core.config import settings
 
 # Create database tables
@@ -32,6 +32,12 @@ app.add_middleware(
 app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(faqs.router, prefix="/api", tags=["faqs"])
 app.include_router(logs.router, prefix="/api", tags=["logs"])
+app.include_router(smart_chat.router, prefix="/api", tags=["smart-chat"])
+app.include_router(simple_chat.router, prefix="/api", tags=["simple-chat"])
+app.include_router(external_api.router, prefix="/api", tags=["external-api"])
+app.include_router(debug.router, prefix="/api", tags=["debug"])
+app.include_router(smart_agent.router, prefix="/api", tags=["smart-agent"])
+app.include_router(api_integration.router, prefix="/api", tags=["api-integration"])
 
 
 @app.get("/")
