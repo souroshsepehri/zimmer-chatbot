@@ -15,7 +15,7 @@ export default function SimpleInputTest() {
         placeholder="Type here to test..."
         className="w-full px-3 py-2 border border-gray-300 rounded mb-2"
       />
-      <p className="text-sm text-gray-600">Current value: "{text}"</p>
+      <p className="text-sm text-gray-600">Current value: &quot;{text}&quot;</p>
     </div>
   )
 }

@@ -7,7 +7,7 @@ interface FAQ {
   id: number;
   question: string;
   answer: string;
-  category_id: number;
+  category_id?: number;
   category?: {
     id: number;
     name: string;
@@ -28,7 +28,7 @@ export default function FAQManagement() {
   const [formData, setFormData] = useState({
     question: '',
     answer: '',
-    category_id: 1
+    category_id: 1 as number
   });
 
   useEffect(() => {
@@ -67,7 +67,7 @@ export default function FAQManagement() {
       await loadFAQs();
       setShowModal(false);
       setEditingFAQ(null);
-      setFormData({ question: '', answer: '', category_id: 1 });
+      setFormData({ question: '', answer: '', category_id: 1 as number });
     } catch (error) {
       console.error('Error saving FAQ:', error);
     }
@@ -78,7 +78,7 @@ export default function FAQManagement() {
     setFormData({
       question: faq.question,
       answer: faq.answer,
-      category_id: faq.category_id
+      category_id: faq.category_id || 1
     });
     setShowModal(true);
   };
@@ -96,7 +96,7 @@ export default function FAQManagement() {
 
   const handleAddNew = () => {
     setEditingFAQ(null);
-    setFormData({ question: '', answer: '', category_id: 1 });
+    setFormData({ question: '', answer: '', category_id: 1 as number });
     setShowModal(true);
   };
 
