@@ -34,7 +34,8 @@ cd ..
 echo ""
 echo "[2/3] Starting Backend Server..."
 cd backend
-python3 app.py &
+source venv/bin/activate 2>/dev/null || true
+python3 app.py > ../backend.log 2>&1 &
 BACKEND_PID=$!
 cd ..
 sleep 5
@@ -43,7 +44,7 @@ sleep 5
 echo ""
 echo "[3/3] Starting Frontend Server..."
 cd frontend
-npm run dev &
+npm run dev > ../frontend.log 2>&1 &
 FRONTEND_PID=$!
 cd ..
 
