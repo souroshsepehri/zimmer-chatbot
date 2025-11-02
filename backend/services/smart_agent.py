@@ -16,7 +16,7 @@ from urllib.parse import urlparse, urljoin
 import time
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain.schema import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
 from langchain.memory import ConversationBufferWindowMemory
 from langchain.tools import Tool
@@ -333,12 +333,18 @@ class SmartAIAgent:
             if len(content) < 500:
                 return content
             
+            # Check if LLM is available
+            if not self.llm:
+                # Return truncated content if LLM not available
+                return content[:500] + "..." if len(content) > 500 else content
+            
             # Use AI to summarize
             prompt = f"Summarize the following content in 2-3 sentences:\n\n{content[:2000]}"
             response = self.llm.invoke([HumanMessage(content=prompt)])
             return response.content
         except Exception as e:
-            return f"Error summarizing content: {str(e)}"
+            # Return truncated content on error
+            return content[:500] + "..." if len(content) > 500 else content
     
     def _style_selector_tool(self, message: str) -> str:
         """Tool function for selecting response style"""
@@ -647,6 +653,9 @@ Guidelines:
     def _create_fallback_response(self, message: str, style: str, web_content: Dict[str, Any], context: Dict[str, Any] = None) -> str:
         """Create a fallback response when OpenAI is not available"""
         message_lower = message.lower()
+        
+        # Extract URLs from message
+        urls = self._extract_urls(message)
         
         # Check for common patterns and provide appropriate responses
         if any(word in message_lower for word in ['hello', 'hi', 'hey', 'سلام']):
