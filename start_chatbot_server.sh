@@ -13,6 +13,27 @@ cd "$SCRIPT_DIR"
 echo "Current directory: $(pwd)"
 echo ""
 
+# Stop existing servers first
+echo "[0/3] Stopping existing servers..."
+pkill -f "python3 app.py" 2>/dev/null
+pkill -f "npm run dev" 2>/dev/null
+pkill -f "next dev" 2>/dev/null
+
+# Force kill processes on ports
+if lsof -ti:8002 > /dev/null 2>&1; then
+    kill -9 $(lsof -ti:8002) 2>/dev/null 2>/dev/null
+fi
+
+for port in 3000 3001 3002 3003; do
+    if lsof -ti:$port > /dev/null 2>&1; then
+        kill -9 $(lsof -ti:$port) 2>/dev/null 2>/dev/null
+    fi
+done
+
+sleep 2
+echo "✅ Old processes stopped"
+echo ""
+
 # Step 1: Check and install frontend dependencies
 echo "[1/3] Checking Frontend Dependencies..."
 cd frontend
