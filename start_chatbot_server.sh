@@ -69,17 +69,84 @@ npm run dev > ../frontend.log 2>&1 &
 FRONTEND_PID=$!
 cd ..
 
+# Wait a bit more for frontend to be ready
+sleep 5
+
+# Get the actual frontend port
+FRONTEND_PORT=$(netstat -tuln 2>/dev/null | grep "300" | grep -oP ':\K[0-9]+' | head -1 || echo "3000")
+SERVER_IP=$(hostname -I | awk '{print $1}')
+
 echo ""
 echo "========================================"
 echo "   Chatbot Started Successfully!"
 echo "========================================"
 echo ""
 echo "Backend:  http://localhost:8002"
-echo "Frontend: http://localhost:3000"
-echo "Admin:    http://localhost:3000/admin"
+echo "Frontend: http://localhost:$FRONTEND_PORT"
+echo "Admin:    http://localhost:$FRONTEND_PORT/admin"
 echo ""
 echo "Backend PID:  $BACKEND_PID"
 echo "Frontend PID: $FRONTEND_PID"
+echo ""
+
+# Create a simple HTML page that redirects to the chatbot
+cat > chatbot_access.html << EOF
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="refresh" content="2;url=http://localhost:$FRONTEND_PORT">
+    <title>Opening Chatbot...</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            text-align: center;
+        }
+        h1 { font-size: 2.5em; margin-bottom: 20px; }
+        p { font-size: 1.2em; }
+        a {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 15px 30px;
+            background: white;
+            color: #667eea;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Opening Chatbot...</h1>
+        <p>Your chatbot is starting...</p>
+        <p>If it doesn't open automatically, click below:</p>
+        <a href="http://localhost:$FRONTEND_PORT">Open Chatbot</a>
+    </div>
+</body>
+</html>
+EOF
+
+# Try to open browser (works on some Linux systems with GUI)
+if command -v xdg-open > /dev/null; then
+    xdg-open "http://localhost:$FRONTEND_PORT" 2>/dev/null &
+elif command -v gnome-open > /dev/null; then
+    gnome-open "http://localhost:$FRONTEND_PORT" 2>/dev/null &
+fi
+
+echo "✅ Chatbot is ready!"
+echo ""
+echo "Open in browser:"
+echo "  http://localhost:$FRONTEND_PORT"
+echo "  http://$SERVER_IP:$FRONTEND_PORT (from external)"
 echo ""
 echo "To stop the servers, run:"
 echo "kill $BACKEND_PID $FRONTEND_PID"
