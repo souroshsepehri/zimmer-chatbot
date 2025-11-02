@@ -18,9 +18,35 @@ import time
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
-from langchain.memory import ConversationBufferWindowMemory
+try:
+    from langchain.memory import ConversationBufferWindowMemory
+except ImportError:
+    try:
+        from langchain_community.memory import ConversationBufferWindowMemory
+    except ImportError:
+        # Fallback: Create a simple memory class if langchain memory is not available
+        class ConversationBufferWindowMemory:
+            def __init__(self, k=10):
+                self.k = k
+                self.messages = []
+            def save_context(self, inputs, outputs):
+                self.messages.append({"inputs": inputs, "outputs": outputs})
+                if len(self.messages) > self.k:
+                    self.messages.pop(0)
+            def load_memory_variables(self, inputs):
+                return {"history": self.messages}
 from langchain_core.tools import Tool
-from langchain.agents import initialize_agent, AgentType
+try:
+    from langchain.agents import initialize_agent, AgentType
+except ImportError:
+    try:
+        from langchain.agent import initialize_agent, AgentType
+    except ImportError:
+        # Fallback for newer langchain versions
+        from langchain.agents.agent_types import AgentType
+        def initialize_agent(tools, llm, agent, verbose, memory):
+            logger.warning("Agent initialization not fully supported in this langchain version")
+            return None
 from langchain_core.callbacks import StreamingStdOutCallbackHandler
 
 from core.config import settings
