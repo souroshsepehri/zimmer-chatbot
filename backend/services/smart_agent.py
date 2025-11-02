@@ -36,17 +36,6 @@ except ImportError:
             def load_memory_variables(self, inputs):
                 return {"history": self.messages}
 from langchain_core.tools import Tool
-try:
-    from langchain.agents import initialize_agent, AgentType
-except ImportError:
-    try:
-        from langchain.agent import initialize_agent, AgentType
-    except ImportError:
-        # Fallback for newer langchain versions
-        from langchain.agents.agent_types import AgentType
-        def initialize_agent(tools, llm, agent, verbose, memory):
-            logger.warning("Agent initialization not fully supported in this langchain version")
-            return None
 from langchain_core.callbacks import StreamingStdOutCallbackHandler
 
 from core.config import settings
@@ -54,6 +43,25 @@ from .debugger import debugger
 from .api_integration import api_integration
 
 logger = logging.getLogger(__name__)
+
+# Import agents with fallback
+try:
+    from langchain.agents import initialize_agent, AgentType
+except ImportError:
+    try:
+        from langchain.agent import initialize_agent, AgentType
+    except ImportError:
+        # Fallback for newer langchain versions
+        try:
+            from langchain.agents.agent_types import AgentType
+        except ImportError:
+            # Create a dummy AgentType enum
+            from enum import Enum
+            class AgentType(Enum):
+                ZERO_SHOT_REACT_DESCRIPTION = "zero_shot_react_description"
+        def initialize_agent(tools, llm, agent, verbose, memory):
+            logger.warning("Agent initialization not fully supported in this langchain version")
+            return None
 
 class WebContentReader:
     """Advanced web content reader with multiple extraction methods"""
