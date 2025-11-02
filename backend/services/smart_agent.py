@@ -17,11 +17,11 @@ import time
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
 from langchain.memory import ConversationBufferWindowMemory
-from langchain.tools import Tool
+from langchain_core.tools import Tool
 from langchain.agents import initialize_agent, AgentType
-from langchain.callbacks import StreamingStdOutCallbackHandler
+from langchain_core.callbacks import StreamingStdOutCallbackHandler
 
 from core.config import settings
 from .debugger import debugger
