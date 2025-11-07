@@ -54,11 +54,11 @@ class ChatChain:
             if debug:
                 retrieval_results_formatted = [
                     RetrievalResult(
-                        faq_id=r["id"],
-                        question=r["question"],
-                        answer=r["answer"],
-                        score=r["score"],
-                        category=r["category"]
+                        faq_id=r.get("faq_id") or r.get("id"),  # Handle both key formats
+                        question=r.get("question", ""),
+                        answer=r.get("answer", ""),
+                        score=r.get("score", 0.0),
+                        category=r.get("category")
                     ) for r in result.get("all_matches", [])
                 ]
                 
@@ -144,11 +144,12 @@ class ChatChain:
             # Always use the best database match, even if score is low
             best_match = retrieval_results[0]
             source = "faq"
-            answer = best_match["answer"]
+            answer = best_match.get("answer", self.fallback_answer)
             success = True
-            matched_faq_id = best_match["faq_id"]
+            matched_faq_id = best_match.get("faq_id")  # Use get() to handle missing keys safely
             unanswered_in_db = False
-            print(f"DEBUG: Using database answer with score: {best_match['score']:.3f}")
+            score = best_match.get("score", 0)
+            print(f"DEBUG: Using database answer with score: {score:.3f}")
         else:
             # No relevant FAQs found, use fallback
             source = "fallback"
@@ -169,11 +170,11 @@ class ChatChain:
         if debug:
             retrieval_results_formatted = [
                 RetrievalResult(
-                    faq_id=r["faq_id"],
-                    question=r["question"],
-                    answer=r["answer"],
-                    score=r["score"],
-                    category=r["category"]
+                    faq_id=r.get("faq_id") or r.get("id"),  # Handle both key formats
+                    question=r.get("question", ""),
+                    answer=r.get("answer", ""),
+                    score=r.get("score", 0.0),
+                    category=r.get("category")
                 ) for r in retrieval_results
             ]
             

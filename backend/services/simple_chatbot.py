@@ -155,22 +155,30 @@ class SimpleChatbot:
             
             if results:
                 # Smart ranking based on intent
-                if intent_result:
-                    # Rank results based on intent
-                    ranked_results = intent_detector.rank_answers(intent_result, results)
-                    best_match = ranked_results[0]
-                else:
-                    # Use original ranking if intent detection fails
+                try:
+                    if intent_result:
+                        # Rank results based on intent
+                        ranked_results = intent_detector.rank_answers(intent_result, results)
+                        if ranked_results and len(ranked_results) > 0:
+                            best_match = ranked_results[0]
+                        else:
+                            best_match = results[0]
+                    else:
+                        # Use original ranking if intent detection fails
+                        best_match = results[0]
+                except Exception as e:
+                    logger.warning(f"Error ranking results: {e}, using first result")
                     best_match = results[0]
                 
+                # Ensure best_match has required fields with safe defaults
                 return {
-                    "answer": best_match["answer"],
+                    "answer": best_match.get("answer", self.fallback_answer),
                     "source": "faq",
                     "success": True,
-                    "faq_id": best_match["id"],
-                    "question": best_match["question"],
-                    "category": best_match["category"],
-                    "score": best_match.get("final_score", best_match.get("score", 0)),
+                    "faq_id": best_match.get("id") or best_match.get("faq_id"),
+                    "question": best_match.get("question", ""),
+                    "category": best_match.get("category"),
+                    "score": best_match.get("final_score") or best_match.get("score", 0),
                     "intent": intent_result.intent.value if intent_result else "unknown",
                     "confidence": intent_result.confidence if intent_result else 0.0,
                     "context": intent_result.context if intent_result else None,

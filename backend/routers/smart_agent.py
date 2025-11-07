@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse
 from typing import Optional, Dict, Any
 from pydantic import BaseModel
 import asyncio
+from datetime import datetime
 
 from services.smart_agent import smart_agent
 from core.db import get_db
