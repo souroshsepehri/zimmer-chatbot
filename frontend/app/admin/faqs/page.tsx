@@ -1,23 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { postChat, getFAQs, createFAQ, updateFAQ, deleteFAQ, getCategories } from '@/lib/api';
-
-interface FAQ {
-  id: number;
-  question: string;
-  answer: string;
-  category_id?: number;
-  category?: {
-    id: number;
-    name: string;
-  };
-}
-
-interface Category {
-  id: number;
-  name: string;
-}
+import { 
+  postChat, 
+  getFAQs, 
+  createFAQ, 
+  updateFAQ, 
+  deleteFAQ, 
+  getCategories,
+  type FAQ,
+  type Category 
+} from '@/lib/api';
 
 export default function FAQManagement() {
   const [faqs, setFaqs] = useState<FAQ[]>([]);
