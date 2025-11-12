@@ -46,7 +46,11 @@ export default function SystemStatusPage() {
     setError(null)
     
     try {
-      const baseUrl = 'http://localhost:8001'
+      // Use same hostname as frontend, but port 8001
+      const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
+      const baseUrl = hostname === 'localhost' || hostname === '127.0.0.1' 
+        ? 'http://localhost:8001' 
+        : `http://${hostname}:8001`
       
       // Check backend health
       const healthResponse = await fetch(`${baseUrl}/health`)
