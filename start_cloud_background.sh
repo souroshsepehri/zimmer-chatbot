@@ -35,7 +35,7 @@ fi
 mkdir -p vectorstore logs __pycache__
 
 # Get port from environment or use default
-PORT=${PORT:-8000}
+PORT=${PORT:-8001}
 HOST=${HOST:-0.0.0.0}
 
 # Start server in background

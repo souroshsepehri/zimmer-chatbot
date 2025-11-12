@@ -23,7 +23,7 @@ def test_ai_future_error():
         
         print("2. Testing OpenAI API call...")
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": "سلام"}],
             max_tokens=50
         )

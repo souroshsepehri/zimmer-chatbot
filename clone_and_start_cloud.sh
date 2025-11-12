@@ -110,7 +110,7 @@ echo "   Starting Chatbot Server"
 echo "========================================"
 echo ""
 
-PORT=${PORT:-8000}
+PORT=${PORT:-8001}
 HOST=${HOST:-0.0.0.0}
 
 echo "Server starting on: http://$HOST:$PORT"

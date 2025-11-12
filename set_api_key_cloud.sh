@@ -12,7 +12,7 @@ read -s API_KEY
 # Create .env file with API key
 cat > .env << EOF
 OPENAI_API_KEY=$API_KEY
-OPENAI_MODEL=gpt-4o-mini
+OPENAI_MODEL=gpt-3.5-turbo
 EMBEDDING_MODEL=text-embedding-3-small
 RETRIEVAL_TOP_K=4
 RETRIEVAL_THRESHOLD=0.82

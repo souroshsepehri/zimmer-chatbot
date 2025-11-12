@@ -10,7 +10,7 @@ set OPENAI_API_KEY=%OPENAI_API_KEY%
 echo.
 echo Creating .env file...
 echo OPENAI_API_KEY=%OPENAI_API_KEY% > .env
-echo OPENAI_MODEL=gpt-4o-mini >> .env
+echo OPENAI_MODEL=gpt-3.5-turbo >> .env
 echo EMBEDDING_MODEL=text-embedding-3-small >> .env
 echo RETRIEVAL_TOP_K=4 >> .env
 echo RETRIEVAL_THRESHOLD=0.82 >> .env

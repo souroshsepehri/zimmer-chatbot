@@ -230,7 +230,7 @@ class SmartAIAgent:
         if self.openai_available:
             try:
                 self.llm = ChatOpenAI(
-                    model="gpt-4o-mini",
+                    model=settings.openai_model,
                     temperature=0.7,
                     max_tokens=2000,
                     streaming=True,

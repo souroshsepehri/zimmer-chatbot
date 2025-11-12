@@ -24,7 +24,7 @@ if "%API_KEY%"=="" (
 
 (
 echo OPENAI_API_KEY=%API_KEY%
-echo OPENAI_MODEL=gpt-4o-mini
+echo OPENAI_MODEL=gpt-3.5-turbo
 echo EMBEDDING_MODEL=text-embedding-3-small
 echo RETRIEVAL_TOP_K=4
 echo RETRIEVAL_THRESHOLD=0.82

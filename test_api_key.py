@@ -35,7 +35,7 @@ def test_api_key():
     try:
         from langchain_openai import ChatOpenAI
         llm = ChatOpenAI(
-            model="gpt-4o-mini",
+            model=settings.openai_model,
             api_key=api_key or settings.openai_api_key,
             temperature=0.1
         )

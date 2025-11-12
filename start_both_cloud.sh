@@ -35,13 +35,13 @@ if command -v pm2 &> /dev/null; then
     pm2 delete chatbot-backend 2>/dev/null
     pm2 start uvicorn --name chatbot-backend \
       --interpreter python3 \
-      -- app:app --host 0.0.0.0 --port 8000
+      -- app:app --host 0.0.0.0 --port 8001
     pm2 save
     BACKEND_PID=$(pm2 pid chatbot-backend)
     echo "✅ Backend started with PM2 (PID: $BACKEND_PID)"
 else
     echo "Using nohup to start backend..."
-    nohup uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1 > ../backend.log 2>&1 &
+    nohup uvicorn app:app --host 0.0.0.0 --port 8001 --workers 1 > ../backend.log 2>&1 &
     BACKEND_PID=$!
     echo "✅ Backend started (PID: $BACKEND_PID)"
 fi
@@ -94,14 +94,14 @@ echo "   Both Servers Started Successfully!"
 echo "========================================"
 echo ""
 echo "Backend:"
-echo "  Local:  http://localhost:8000"
-echo "  Server: http://$SERVER_IP:8000"
-echo "  API Docs: http://$SERVER_IP:8000/docs"
+echo "  Local:  http://localhost:8001"
+echo "  Server: http://$SERVER_IP:8001"
+echo "  API Docs: http://$SERVER_IP:8001/docs"
 echo ""
 echo "Frontend:"
-echo "  Local:  http://localhost:3000"
-echo "  Server: http://$SERVER_IP:3000"
-echo "  Admin:  http://$SERVER_IP:3000/admin"
+echo "  Local:  http://localhost:8000"
+echo "  Server: http://$SERVER_IP:8000"
+echo "  Admin:  http://$SERVER_IP:8000/admin"
 echo ""
 
 if command -v pm2 &> /dev/null; then

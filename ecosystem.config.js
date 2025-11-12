@@ -11,12 +11,12 @@ module.exports = {
       max_memory_restart: '1G',
       env: {
         NODE_ENV: 'production',
-        PORT: 8000,
+        PORT: 8001,
         HOST: '0.0.0.0'
       },
       env_development: {
         NODE_ENV: 'development',
-        PORT: 8000,
+        PORT: 8001,
         HOST: '127.0.0.1'
       },
       error_file: './logs/backend-error.log',
@@ -43,13 +43,13 @@ module.exports = {
       max_memory_restart: '512M',
       env: {
         NODE_ENV: 'production',
-        PORT: 3000,
-        NEXT_PUBLIC_API_URL: 'http://localhost:8000/api'
+        PORT: 8000,
+        NEXT_PUBLIC_API_URL: 'http://localhost:8001/api'
       },
       env_development: {
         NODE_ENV: 'development',
-        PORT: 3000,
-        NEXT_PUBLIC_API_URL: 'http://localhost:8000/api'
+        PORT: 8000,
+        NEXT_PUBLIC_API_URL: 'http://localhost:8001/api'
       },
       error_file: './logs/frontend-error.log',
       out_file: './logs/frontend-out.log',

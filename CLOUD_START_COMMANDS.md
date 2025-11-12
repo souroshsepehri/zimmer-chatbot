@@ -11,8 +11,8 @@ chmod +x start_both_cloud.sh
 ```
 
 This script will:
-- Start backend on port **8000**
-- Start frontend on port **3000**
+- Start backend on port **8001**
+- Start frontend on port **8000**
 - Use PM2 if available, otherwise use nohup
 
 ### Option 2: Start Backend Only
@@ -88,28 +88,28 @@ nohup npm run dev > ../frontend.log 2>&1 &
 
 After starting, access your services at:
 
-- **Backend API**: `http://YOUR-SERVER-IP:8000`
-- **API Documentation**: `http://YOUR-SERVER-IP:8000/docs`
-- **Health Check**: `http://YOUR-SERVER-IP:8000/health`
-- **Frontend**: `http://YOUR-SERVER-IP:3000`
-- **Admin Panel**: `http://YOUR-SERVER-IP:3000/admin`
+- **Backend API**: `http://YOUR-SERVER-IP:8001`
+- **API Documentation**: `http://YOUR-SERVER-IP:8001/docs`
+- **Health Check**: `http://YOUR-SERVER-IP:8001/health`
+- **Frontend**: `http://YOUR-SERVER-IP:8000`
+- **Admin Panel**: `http://YOUR-SERVER-IP:8000/admin`
 
 ## Check Server Status
 
 ```bash
 # Check if backend is running
-curl http://localhost:8000/health
+curl http://localhost:8001/health
 
 # Check if frontend is running
-curl http://localhost:3000
+curl http://localhost:8000
 
 # Check processes
 ps aux | grep uvicorn
 ps aux | grep "npm run dev"
 
 # Check ports
+netstat -tuln | grep 8001
 netstat -tuln | grep 8000
-netstat -tuln | grep 3000
 ```
 
 ## View Logs
@@ -156,8 +156,8 @@ Make sure ports 8000 and 3000 are open:
 
 ```bash
 # For UFW
+sudo ufw allow 8001/tcp
 sudo ufw allow 8000/tcp
-sudo ufw allow 3000/tcp
 
 # For Google Cloud
 # Add firewall rules in Google Cloud Console for ports 8000 and 3000
@@ -169,7 +169,7 @@ sudo ufw allow 3000/tcp
 
 ```bash
 # Find what's using port 8000
-lsof -i :8000
+lsof -i :8001
 
 # Kill the process
 kill -9 <PID>

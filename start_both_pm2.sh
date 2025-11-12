@@ -16,7 +16,7 @@ module.exports = {
     {
       name: 'chatbot-backend',
       script: 'uvicorn',
-      args: 'app:app --host 0.0.0.0 --port 8000',
+      args: 'app:app --host 0.0.0.0 --port 8001',
       interpreter: 'backend/venv/bin/python3',
       cwd: './backend',
       env: {
@@ -41,8 +41,8 @@ module.exports = {
       max_memory_restart: '512M',
       env: {
         NODE_ENV: 'production',
-        PORT: 3000,
-        NEXT_PUBLIC_API_URL: 'http://localhost:8000/api'
+        PORT: 8000,
+        NEXT_PUBLIC_API_URL: 'http://localhost:8001/api'
       },
       error_file: './logs/frontend-error.log',
       out_file: './logs/frontend-out.log',
@@ -88,10 +88,10 @@ echo ""
 SERVER_IP=$(hostname -I | awk '{print $1}')
 
 echo "Access your chatbot:"
-echo "  Backend API:  http://$SERVER_IP:8000"
-echo "  API Docs:     http://$SERVER_IP:8000/docs"
-echo "  Frontend:     http://$SERVER_IP:3000"
-echo "  Admin Panel: http://$SERVER_IP:3000/admin"
+echo "  Backend API:  http://$SERVER_IP:8001"
+echo "  API Docs:     http://$SERVER_IP:8001/docs"
+echo "  Frontend:     http://$SERVER_IP:8000"
+echo "  Admin Panel: http://$SERVER_IP:8000/admin"
 echo ""
 echo "Useful commands:"
 echo "  pm2 status              - Check status"

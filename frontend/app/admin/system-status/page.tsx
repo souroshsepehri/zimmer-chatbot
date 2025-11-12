@@ -46,7 +46,7 @@ export default function SystemStatusPage() {
     setError(null)
     
     try {
-      const baseUrl = 'http://localhost:8002'
+      const baseUrl = 'http://localhost:8001'
       
       // Check backend health
       const healthResponse = await fetch(`${baseUrl}/health`)
