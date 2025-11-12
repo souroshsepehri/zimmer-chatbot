@@ -102,7 +102,7 @@ echo "========================================"
 echo ""
 
 # Get port from environment or use default
-PORT=${PORT:-8002}
+PORT=${PORT:-8000}
 HOST=${HOST:-0.0.0.0}
 
 echo "Server will start on: http://$HOST:$PORT"
