@@ -20,7 +20,7 @@ This script will:
 ```bash
 cd ~/chatbot2/backend
 source venv/bin/activate
-nohup uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1 > ../backend.log 2>&1 &
+nohup uvicorn app:app --host 0.0.0.0 --port 8001 --workers 1 > ../backend.log 2>&1 &
 ```
 
 Or using the background script:
@@ -58,12 +58,12 @@ cd ~/chatbot2/backend
 source venv/bin/activate
 
 # Start backend server
-uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1
+uvicorn app:app --host 0.0.0.0 --port 8001 --workers 1
 ```
 
 For background execution:
 ```bash
-nohup uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1 > ../backend.log 2>&1 &
+nohup uvicorn app:app --host 0.0.0.0 --port 8001 --workers 1 > ../backend.log 2>&1 &
 ```
 
 ### Start Frontend Manually

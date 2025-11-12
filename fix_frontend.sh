@@ -59,3 +59,4 @@ echo "Testing frontend..."
 curl -s http://localhost:3000 > /dev/null && echo "✅ Frontend is working!" || echo "⏳ Frontend is still starting (may need more time)"
 
 
+

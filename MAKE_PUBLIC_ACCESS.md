@@ -102,3 +102,4 @@ If you have a domain name:
 - Verify the rule is applied to your VM instance
 
 
+

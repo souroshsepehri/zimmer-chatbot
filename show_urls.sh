@@ -27,3 +27,4 @@ echo ""
 echo "⚠️  Make sure ports 8000 and 8001 are open in firewall!"
 echo ""
 
+
