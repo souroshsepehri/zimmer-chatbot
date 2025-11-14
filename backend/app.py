@@ -1,9 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from core.db import engine, Base
-from routers import chat, faqs, logs, smart_chat, simple_chat, external_api, debug, smart_agent, api_integration
+from routers import chat, faqs, logs, smart_chat, simple_chat, external_api, debug, smart_agent, api_integration, admin
 from core.config import settings
+
+# Import all models to ensure they are registered with SQLAlchemy
+from models import faq, log
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -15,15 +20,29 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware
+# Add CORS middleware - Allow all origins for development
+# In production, specify exact origins
+import os
+is_production = os.environ.get("ENVIRONMENT") == "production"
+
+cors_origins = [
+    "http://localhost:3000",  # Next.js dev server
+    "http://localhost:3001",  # Alternative Next.js port
+    "http://127.0.0.1:3000",  # Localhost IP
+    "http://127.0.0.1:3001",  # Alternative localhost IP
+    "http://localhost:8000",  # Alternative frontend port
+    "http://127.0.0.1:8000",  # Alternative frontend port IP
+    "https://persian-chatbot-frontend.onrender.com",  # Render frontend
+]
+
+# In development, allow all origins
+if not is_production:
+    cors_origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # Local development
-        "https://persian-chatbot-frontend.onrender.com",  # Render frontend
-        "https://*.onrender.com",  # Any Render subdomain
-    ],
-    allow_credentials=True,
+    allow_origins=cors_origins if is_production else ["*"],
+    allow_credentials=is_production,  # Only allow credentials in production with specific origins
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -38,6 +57,12 @@ app.include_router(external_api.router, prefix="/api", tags=["external-api"])
 app.include_router(debug.router, prefix="/api", tags=["debug"])
 app.include_router(smart_agent.router, prefix="/api", tags=["smart-agent"])
 app.include_router(api_integration.router, prefix="/api", tags=["api-integration"])
+app.include_router(admin.router, tags=["admin"])
+
+# Mount static files
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 
 @app.get("/")
@@ -263,6 +288,37 @@ async def test_database():
 
 if __name__ == "__main__":
     import uvicorn
+    import socket
     import os
-    port = int(os.environ.get("PORT", 8001))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    
+    def is_port_available(port):
+        """Check if a port is available"""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(('0.0.0.0', port))
+                return True
+            except OSError:
+                return False
+    
+    # Get port from environment variable or settings
+    port = int(os.environ.get("PORT", settings.server_port))
+    host = os.environ.get("HOST", settings.server_host)
+    
+    # Try to find an available port if the default is busy
+    original_port = port
+    max_attempts = 10
+    for attempt in range(max_attempts):
+        if is_port_available(port):
+            break
+        if attempt == 0:
+            print(f"⚠️  Port {port} is already in use. Trying alternative ports...")
+        port = original_port + attempt + 1
+    else:
+        print(f"❌ Could not find an available port after {max_attempts} attempts.")
+        print(f"   Please stop the process using port {original_port} or set a different PORT environment variable.")
+        exit(1)
+    
+    if port != original_port:
+        print(f"ℹ️  Using port {port} instead of {original_port}")
+    
+    uvicorn.run(app, host=host, port=port)

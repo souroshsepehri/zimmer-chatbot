@@ -2,8 +2,8 @@ module.exports = {
   apps: [
     {
       name: 'chatbot-backend',
-      script: 'main.py',
-      interpreter: 'python',
+      script: './backend/start_server.py',
+      interpreter: 'python3',
       cwd: './',
       instances: 1,
       autorestart: true,
@@ -35,7 +35,7 @@ module.exports = {
     {
       name: 'chatbot-frontend',
       script: 'npm',
-      args: 'start',
+      args: 'run dev',
       cwd: './frontend',
       instances: 1,
       autorestart: true,

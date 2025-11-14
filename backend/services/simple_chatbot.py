@@ -61,8 +61,8 @@ class SimpleChatbot:
             self.faqs = []
             return False
     
-    def search_faqs(self, query: str) -> List[Dict[str, Any]]:
-        """Simple but effective FAQ search"""
+    def search_faqs(self, query: str, min_score: float = 20.0) -> List[Dict[str, Any]]:
+        """Simple but effective FAQ search with quality threshold"""
         if not self.faqs:
             logger.warning("No FAQs loaded")
             return []
@@ -77,6 +77,8 @@ class SimpleChatbot:
             score = 0
             question_lower = faq["question"].lower()
             answer_lower = faq["answer"].lower()
+            matched_words = 0
+            total_query_words = 0
             
             # Exact match in question (highest priority)
             if query_lower in question_lower:
@@ -86,14 +88,29 @@ class SimpleChatbot:
             if query_lower in answer_lower:
                 score += 50
             
-            # Word-by-word matching
+            # Word-by-word matching with better scoring
             query_words = re.findall(r'\b\w+\b', query_lower)
+            total_query_words = len([w for w in query_words if len(w) > 2])
+            
             for word in query_words:
                 if len(word) > 2:  # Only consider words longer than 2 characters
+                    # Check if word appears in question (higher weight)
                     if word in question_lower:
-                        score += 10
-                    if word in answer_lower:
+                        score += 15  # Increased from 10
+                        matched_words += 1
+                    # Check if word appears in answer (lower weight)
+                    elif word in answer_lower:
                         score += 5
+            
+            # Bonus for matching multiple words (better relevance)
+            if total_query_words > 0:
+                match_ratio = matched_words / total_query_words
+                if match_ratio >= 0.7:  # 70% or more words matched
+                    score += 30  # Increased bonus
+                elif match_ratio >= 0.5:  # 50% or more words matched
+                    score += 20
+                elif match_ratio >= 0.3:  # 30% or more words matched
+                    score += 10
             
             # Persian keyword matching
             persian_matches = {
@@ -115,19 +132,25 @@ class SimpleChatbot:
                     if any(keyword in answer_lower for keyword in keywords):
                         score += 8
             
-            if score > 0:
+            # Only include results that meet minimum score threshold
+            if score >= min_score:
+                # Normalize score to 0-1 range for consistency
+                # Max score can be: 100 (exact question) + 50 (exact answer) + 15*words (word matches) + 30 (bonus) = ~250+
+                normalized_score = min(score / 250.0, 1.0)  # Adjusted max score
                 results.append({
                     "id": faq["id"],
                     "question": faq["question"],
                     "answer": faq["answer"],
                     "category": faq["category"],
-                    "score": score
+                    "score": normalized_score,
+                    "raw_score": score,  # Keep raw score for debugging
+                    "match_ratio": matched_words / total_query_words if total_query_words > 0 else 0  # Add match ratio
                 })
         
         # Sort by score (highest first)
         results.sort(key=lambda x: x["score"], reverse=True)
         
-        # Return top 3 results
+        # Return top 3 results, but only if they have good scores
         return results[:3]
     
     def get_answer(self, question: str) -> Dict[str, Any]:
@@ -150,27 +173,48 @@ class SimpleChatbot:
                 logger.warning(f"Intent detection failed: {e}")
                 intent_result = None
             
-            # Search for matching FAQs
-            results = self.search_faqs(question)
+            # Search for matching FAQs with quality threshold
+            # Higher min_score means stricter matching (only good matches)
+            results = self.search_faqs(question, min_score=20.0)
             
             if results:
+                # Quality check: Only use result if score is high enough
+                best_match = results[0]
+                match_score = best_match.get("score", 0)
+                raw_score = best_match.get("raw_score", 0)
+                
+                # Minimum quality threshold: score must be at least 0.3 (30% match) or raw score >= 30
+                min_quality_threshold = 0.3
+                if match_score < min_quality_threshold and raw_score < 30:
+                    logger.info(f"Match score too low ({match_score:.2f}), using fallback")
+                    return {
+                        "answer": self.fallback_answer,
+                        "source": "fallback",
+                        "success": False,
+                        "intent": intent_result.intent.value if intent_result else "unknown",
+                        "confidence": intent_result.confidence if intent_result else 0.0,
+                        "context": intent_result.context if intent_result else None,
+                        "all_matches": results
+                    }
+                
                 # Smart ranking based on intent
                 try:
                     if intent_result:
                         # Rank results based on intent
                         ranked_results = intent_detector.rank_answers(intent_result, results)
                         if ranked_results and len(ranked_results) > 0:
-                            best_match = ranked_results[0]
-                        else:
-                            best_match = results[0]
-                    else:
-                        # Use original ranking if intent detection fails
-                        best_match = results[0]
+                            # Use ranked result only if it has good score
+                            ranked_best = ranked_results[0]
+                            if ranked_best.get("score", 0) >= min_quality_threshold:
+                                best_match = ranked_best
+                            else:
+                                # If ranked result is poor, use original best match
+                                logger.info("Ranked result score too low, using original best match")
                 except Exception as e:
                     logger.warning(f"Error ranking results: {e}, using first result")
-                    best_match = results[0]
                 
                 # Ensure best_match has required fields with safe defaults
+                logger.info(f"Using FAQ match: {best_match.get('question', '')[:50]}... (score: {match_score:.2f})")
                 return {
                     "answer": best_match.get("answer", self.fallback_answer),
                     "source": "faq",

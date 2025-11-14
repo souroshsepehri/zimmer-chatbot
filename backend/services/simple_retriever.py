@@ -89,11 +89,11 @@ class SimpleFAQRetriever:
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:top_k]
     
-    def search(self, query: str, top_k: int = 4, threshold: float = 0.1) -> List[Dict[str, Any]]:
-        """Main search method with very low threshold to catch more matches"""
+    def search(self, query: str, top_k: int = 4, threshold: float = 0.3) -> List[Dict[str, Any]]:
+        """Main search method with quality threshold to ensure good matches"""
         results = self.simple_search(query, top_k)
         
-        # Use very low threshold to catch even distant matches
+        # Use higher threshold to ensure quality matches only
         filtered_results = [r for r in results if r["score"] >= threshold]
         
         return filtered_results

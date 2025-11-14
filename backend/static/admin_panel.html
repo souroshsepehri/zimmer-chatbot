@@ -207,9 +207,23 @@
             <div class="admin-actions">
                 <div class="action-card">
                     <div class="action-icon">📊</div>
-                    <div class="action-title">آمار و گزارشات</div>
-                    <div class="action-description">مشاهده آمار کامل استفاده از بات</div>
-                    <button class="action-button" onclick="viewStats()">مشاهده آمار</button>
+                    <div class="action-title">گزارشات و لاگ‌ها</div>
+                    <div class="action-description">مشاهده آمار کامل و تاریخچه گفتگوها</div>
+                    <button class="action-button" onclick="openDashboard()">مشاهده گزارشات</button>
+                </div>
+                
+                <div class="action-card">
+                    <div class="action-icon">📝</div>
+                    <div class="action-title">مدیریت سوالات</div>
+                    <div class="action-description">افزودن، ویرایش یا حذف سؤالات متداول</div>
+                    <button class="action-button" onclick="manageFAQ()">مدیریت سوالات</button>
+                </div>
+                
+                <div class="action-card">
+                    <div class="action-icon">📁</div>
+                    <div class="action-title">مدیریت دسته‌بندی‌ها</div>
+                    <div class="action-description">ایجاد و مدیریت دسته‌بندی‌های سوالات</div>
+                    <button class="action-button" onclick="manageCategories()">مدیریت دسته‌بندی‌ها</button>
                 </div>
                 
                 <div class="action-card">
@@ -217,13 +231,6 @@
                     <div class="action-title">تنظیمات بات</div>
                     <div class="action-description">تغییر پاسخ‌های پیش‌فرض و تنظیمات</div>
                     <button class="action-button" onclick="openSettings()">تنظیمات</button>
-                </div>
-                
-                <div class="action-card">
-                    <div class="action-icon">📝</div>
-                    <div class="action-title">مدیریت FAQ</div>
-                    <div class="action-description">افزودن، ویرایش یا حذف سؤالات متداول</div>
-                    <button class="action-button" onclick="manageFAQ()">مدیریت FAQ</button>
                 </div>
                 
                 <div class="action-card">
@@ -252,7 +259,7 @@
 &lt;script&gt;
 (function() {
     var script = document.createElement('script');
-    script.src = 'http://localhost:8002/static/chatbot-widget.js';
+    script.src = window.location.protocol + '//' + window.location.host + '/static/chatbot-widget.js';
     script.async = true;
     document.head.appendChild(script);
 })();
@@ -274,42 +281,69 @@
     </div>
     
     <script>
+        const API_BASE = window.location.origin + '/api';
+        const ADMIN_API = window.location.origin;
+        
         // Load admin panel data
         window.onload = function() {
             loadAdminStats();
         };
         
-        function loadAdminStats() {
-            // Simulate loading admin statistics
-            document.getElementById('totalQuestions').textContent = '1,247';
-            document.getElementById('successRate').textContent = '94%';
-            document.getElementById('activeUsers').textContent = '89';
-            document.getElementById('responseTime').textContent = '1.2';
+        async function loadAdminStats() {
+            try {
+                const response = await fetch(`${ADMIN_API}/admin/stats`);
+                if (!response.ok) {
+                    throw new Error('Failed to load stats');
+                }
+                const data = await response.json();
+                
+                // Update statistics display
+                document.getElementById('totalQuestions').textContent = formatNumber(data.total_questions || 0);
+                document.getElementById('successRate').textContent = (data.success_rate || 0).toFixed(1) + '%';
+                document.getElementById('activeUsers').textContent = formatNumber(data.active_users || 0);
+                document.getElementById('responseTime').textContent = (data.response_time || 0).toFixed(2);
+            } catch (error) {
+                console.error('Error loading stats:', error);
+                // Show error state
+                document.getElementById('totalQuestions').textContent = 'خطا';
+                document.getElementById('successRate').textContent = 'خطا';
+                document.getElementById('activeUsers').textContent = 'خطا';
+                document.getElementById('responseTime').textContent = 'خطا';
+            }
         }
         
-        function viewStats() {
-            alert('آمار کامل در حال بارگذاری...');
-            // This would open a detailed stats page
+        function formatNumber(num) {
+            return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        }
+        
+        async function viewStats() {
+            // Redirect to logs page for detailed stats
+            window.location.href = `${ADMIN_API}/admin/logs`;
         }
         
         function openSettings() {
-            alert('تنظیمات بات در حال بارگذاری...');
-            // This would open settings panel
+            // Open settings - you can implement a settings page later
+            alert('صفحه تنظیمات در حال توسعه است');
         }
         
         function manageFAQ() {
-            alert('مدیریت FAQ در حال بارگذاری...');
-            // This would open FAQ management
+            // Open FAQ management page
+            window.location.href = `${ADMIN_API}/admin/faqs`;
         }
         
         function manageContent() {
-            alert('مدیریت محتوا در حال بارگذاری...');
-            // This would open content management
+            // Open content management
+            alert('مدیریت محتوا در حال توسعه است');
         }
         
         function openDashboard() {
-            // Open dashboard in new tab
-            window.open('/dashboard', '_blank');
+            // Open dashboard - you can create a dashboard page later
+            window.location.href = `${ADMIN_API}/admin/logs`;
+        }
+        
+        function manageCategories() {
+            // Open categories management page
+            window.location.href = `${ADMIN_API}/admin/categories`;
         }
         
         function copyWidgetCode() {
@@ -320,7 +354,18 @@
                 alert('کد ویجت کپی شد!');
             }).catch(function(err) {
                 console.error('خطا در کپی کردن: ', err);
-                alert('خطا در کپی کردن کد');
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    alert('کد ویجت کپی شد!');
+                } catch (e) {
+                    alert('خطا در کپی کردن کد');
+                }
+                document.body.removeChild(textArea);
             });
         }
     </script>

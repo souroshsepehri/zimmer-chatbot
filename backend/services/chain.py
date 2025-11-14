@@ -111,7 +111,7 @@ class ChatChain:
             retrieval_results = simple_faq_retriever.search(
                 query=message,
                 top_k=settings.retrieval_top_k,
-                threshold=0.2  # Very low threshold to catch even distant matches
+                threshold=0.3  # Higher threshold for better quality matches
             )
             print(f"DEBUG: Simple search found {len(retrieval_results)} results")
             for i, result in enumerate(retrieval_results[:3]):
@@ -141,15 +141,27 @@ class ChatChain:
         unanswered_in_db = True
         
         if retrieval_results:
-            # Always use the best database match, even if score is low
+            # Quality check: Only use match if score meets minimum threshold
             best_match = retrieval_results[0]
-            source = "faq"
-            answer = best_match.get("answer", self.fallback_answer)
-            success = True
-            matched_faq_id = best_match.get("faq_id")  # Use get() to handle missing keys safely
-            unanswered_in_db = False
             score = best_match.get("score", 0)
-            print(f"DEBUG: Using database answer with score: {score:.3f}")
+            
+            # Minimum quality threshold: score must be at least 0.3 (30% match)
+            min_quality_threshold = 0.3
+            if score >= min_quality_threshold:
+                source = "faq"
+                answer = best_match.get("answer", self.fallback_answer)
+                success = True
+                matched_faq_id = best_match.get("faq_id")
+                unanswered_in_db = False
+                print(f"DEBUG: Using database answer with score: {score:.3f} (above threshold {min_quality_threshold})")
+            else:
+                # Score too low, use fallback instead
+                source = "fallback"
+                answer = self.fallback_answer
+                success = False
+                matched_faq_id = None
+                unanswered_in_db = True
+                print(f"DEBUG: Match score {score:.3f} below threshold {min_quality_threshold}, using fallback")
         else:
             # No relevant FAQs found, use fallback
             source = "fallback"
