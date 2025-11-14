@@ -1,19 +1,18 @@
-import os
 from typing import Optional
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     # OpenAI Configuration
-    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    openai_api_key: str = ""
     openai_model: str = "gpt-3.5-turbo"
     embedding_model: str = "text-embedding-3-small"
     
     # External API Configuration
-    external_api_url: str = os.getenv("EXTERNAL_API_URL", "http://85.208.254.187")
-    external_api_port: int = int(os.getenv("EXTERNAL_API_PORT", "8000"))
-    external_api_timeout: int = int(os.getenv("EXTERNAL_API_TIMEOUT", "30"))
-    external_api_enabled: bool = os.getenv("EXTERNAL_API_ENABLED", "false").lower() == "true"
+    external_api_url: str = "http://85.208.254.187"
+    external_api_port: int = 8000
+    external_api_timeout: int = 30
+    external_api_enabled: bool = False
     
     # Retrieval Configuration
     retrieval_top_k: int = 4
@@ -22,15 +21,21 @@ class Settings(BaseSettings):
     # Database Configuration
     database_url: str = "sqlite:///./app.db"
     
+    # Server Configuration
+    server_port: int = 8001
+    server_host: str = "0.0.0.0"
+    
     # Intent Detection
     intent_system_prompt: str = "تو یک دسته‌بند نیت کاربر هستی. فقط یکی از برچسب‌ها را با احتمال برگردان. خروجی JSON بده."
     
     # Vector Store
     vectorstore_path: str = "./vectorstore"
     
-    class Config:
-        env_file = ".env"  # Enable .env file loading
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        extra="ignore"  # Allow extra fields from environment variables
+    )
 
 
 settings = Settings()

@@ -325,11 +325,8 @@ class SmartAIAgent:
         return initialize_agent(
             tools=self.tools,
             llm=self.llm,
-            agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-            verbose=True,
-            memory=self.memory,
-            handle_parsing_errors=True,
-            max_iterations=5
+            agent=AgentType.OPENAI_FUNCTIONS,
+            verbose=True
         )
     
     def _web_reader_tool(self, url: str) -> str:
