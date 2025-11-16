@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>گزارشات و لاگ‌ها - پنل مدیریت</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 30px;
+        }
+        .header {
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .header h1 {
+            color: #333;
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+        .filters {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .filter-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .filter-group label {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        .filter-group select,
+        .filter-group input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #5a6fd8;
+        }
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+        .logs-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .logs-table th,
+        .logs-table td {
+            padding: 12px;
+            text-align: right;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .logs-table th {
+            background: #f8f9fa;
+            font-weight: bold;
+            color: #333;
+        }
+        .logs-table tr:hover {
+            background: #f8f9fa;
+        }
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .source-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .pagination button {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .pagination button:hover {
+            background: #f8f9fa;
+        }
+        .pagination button.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .back-link {
+            color: #667eea;
+            text-decoration: none;
+            margin-bottom: 20px;
+            display: inline-block;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        .log-text {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .stats-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .stat-label {
+            color: #666;
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/admin" class="back-link">← بازگشت به پنل مدیریت</a>
+        
+        <div class="header">
+            <h1>📊 گزارشات و لاگ‌ها</h1>
+            
+            <div class="stats-summary" id="statsSummary"></div>
+            
+            <div class="filters">
+                <div class="filter-group">
+                    <label>وضعیت:</label>
+                    <select id="filterSuccess">
+                        <option value="">همه</option>
+                        <option value="true">موفق</option>
+                        <option value="false">ناموفق</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>منبع:</label>
+                    <select id="filterSource">
+                        <option value="">همه</option>
+                        <option value="faq">FAQ</option>
+                        <option value="rag">RAG</option>
+                        <option value="llm">LLM</option>
+                        <option value="fallback">Fallback</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>نیت:</label>
+                    <input type="text" id="filterIntent" placeholder="جستجو در نیت">
+                </div>
+                <button class="btn btn-primary" onclick="loadLogs()">جستجو</button>
+                <button class="btn btn-primary" onclick="resetFilters()">پاک کردن فیلترها</button>
+            </div>
+        </div>
+
+        <div id="message"></div>
+        <div id="loading" class="loading">در حال بارگذاری...</div>
+        <div id="logsContainer"></div>
+        <div id="pagination" class="pagination"></div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin + '/api';
+        let currentPage = 1;
+        const pageSize = 50;
+
+        window.onload = function() {
+            loadStats();
+            loadLogs();
+        };
+
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/logs/stats`);
+                if (response.ok) {
+                    const stats = await response.json();
+                    displayStats(stats);
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        function displayStats(stats) {
+            const container = document.getElementById('statsSummary');
+            container.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-value">${stats.total_logs || 0}</div>
+                    <div class="stat-label">کل گفتگوها</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${(stats.success_rate || 0).toFixed(1)}%</div>
+                    <div class="stat-label">نرخ موفقیت</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${stats.today_chats || 0}</div>
+                    <div class="stat-label">گفتگوهای امروز</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${stats.unanswered_logs || 0}</div>
+                    <div class="stat-label">سؤالات بی‌پاسخ</div>
+                </div>
+            `;
+        }
+
+        async function loadLogs(page = 1) {
+            try {
+                document.getElementById('loading').style.display = 'block';
+                currentPage = page;
+
+                const success = document.getElementById('filterSuccess').value;
+                const source = document.getElementById('filterSource').value;
+                const intent = document.getElementById('filterIntent').value;
+
+                let url = `${API_BASE}/logs?page=${page}&page_size=${pageSize}`;
+                if (success) url += `&success=${success}`;
+                if (source) url += `&source=${encodeURIComponent(source)}`;
+                if (intent) url += `&intent=${encodeURIComponent(intent)}`;
+
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Failed to load logs');
+                
+                const data = await response.json();
+                displayLogs(data.items || data);
+                displayPagination(data);
+                document.getElementById('loading').style.display = 'none';
+            } catch (error) {
+                console.error('Error loading logs:', error);
+                document.getElementById('loading').innerHTML = '<div class="error">خطا در بارگذاری لاگ‌ها</div>';
+            }
+        }
+
+        function displayLogs(logs) {
+            const container = document.getElementById('logsContainer');
+            if (logs.length === 0) {
+                container.innerHTML = '<div class="loading">هیچ لاگی یافت نشد</div>';
+                return;
+            }
+
+            container.innerHTML = `
+                <table class="logs-table">
+                    <thead>
+                        <tr>
+                            <th>تاریخ و زمان</th>
+                            <th>سوال کاربر</th>
+                            <th>پاسخ بات</th>
+                            <th>نیت</th>
+                            <th>منبع</th>
+                            <th>اعتماد</th>
+                            <th>وضعیت</th>
+                            <th>عملیات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${logs.map(log => `
+                            <tr>
+                                <td>${formatDate(log.timestamp)}</td>
+                                <td class="log-text" title="${escapeHtml(log.user_text)}">${escapeHtml(log.user_text)}</td>
+                                <td class="log-text" title="${escapeHtml(log.ai_text)}">${escapeHtml(log.ai_text)}</td>
+                                <td>${log.intent || '-'}</td>
+                                <td><span class="source-badge">${log.source || '-'}</span></td>
+                                <td>${log.confidence ? (log.confidence * 100).toFixed(1) + '%' : '-'}</td>
+                                <td>
+                                    <span class="status-badge ${log.success ? 'status-success' : 'status-failed'}">
+                                        ${log.success ? '✓ موفق' : '✗ ناموفق'}
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-danger" onclick="deleteLog(${log.id})">حذف</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function displayPagination(data) {
+            const container = document.getElementById('pagination');
+            if (!data.total_pages || data.total_pages <= 1) {
+                container.innerHTML = '';
+                return;
+            }
+
+            let html = '';
+            if (currentPage > 1) {
+                html += `<button onclick="loadLogs(${currentPage - 1})">قبلی</button>`;
+            }
+
+            for (let i = 1; i <= data.total_pages; i++) {
+                if (i === 1 || i === data.total_pages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+                    html += `<button class="${i === currentPage ? 'active' : ''}" onclick="loadLogs(${i})">${i}</button>`;
+                } else if (i === currentPage - 3 || i === currentPage + 3) {
+                    html += `<span>...</span>`;
+                }
+            }
+
+            if (currentPage < data.total_pages) {
+                html += `<button onclick="loadLogs(${currentPage + 1})">بعدی</button>`;
+            }
+
+            container.innerHTML = html;
+        }
+
+        async function deleteLog(id) {
+            if (!confirm('آیا از حذف این لاگ اطمینان دارید؟')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/logs/${id}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) throw new Error('Failed to delete log');
+
+                showMessage('لاگ با موفقیت حذف شد', 'success');
+                loadLogs(currentPage);
+                loadStats();
+            } catch (error) {
+                showMessage('خطا در حذف لاگ', 'error');
+            }
+        }
+
+        function resetFilters() {
+            document.getElementById('filterSuccess').value = '';
+            document.getElementById('filterSource').value = '';
+            document.getElementById('filterIntent').value = '';
+            loadLogs(1);
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return '-';
+            const date = new Date(dateString);
+            return date.toLocaleString('fa-IR');
+        }
+
+        function showMessage(message, type) {
+            const msgDiv = document.getElementById('message');
+            msgDiv.className = type;
+            msgDiv.textContent = message;
+            msgDiv.style.display = 'block';
+            setTimeout(() => {
+                msgDiv.style.display = 'none';
+            }, 3000);
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
+

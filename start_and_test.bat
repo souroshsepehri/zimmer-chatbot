@@ -1,9 +1,0 @@
-@echo off
-echo Starting chatbot server...
-start "Chatbot Server" cmd /k "cd backend && python -m uvicorn app:app --host 0.0.0.0 --port 8002"
-echo Waiting for server to start...
-timeout /t 5 /nobreak > nul
-echo Opening test interface...
-start test_chatbot_interface.html
-echo Done! Check the browser for the test interface.
-pause

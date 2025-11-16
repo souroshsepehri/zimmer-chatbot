@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مدیریت سوالات - پنل مدیریت</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 30px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .header h1 {
+            color: #333;
+            font-size: 2rem;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #5a6fd8;
+        }
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background: #7f8c8d;
+        }
+        .faq-list {
+            margin-top: 20px;
+        }
+        .faq-item {
+            background: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+        .faq-question {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+        .faq-answer {
+            color: #666;
+            margin-bottom: 15px;
+            line-height: 1.6;
+        }
+        .faq-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+        .modal-content {
+            background: white;
+            margin: 50px auto;
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: bold;
+        }
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .form-group textarea {
+            min-height: 150px;
+            resize: vertical;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .success {
+            background: #efe;
+            color: #3c3;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .back-link {
+            color: #667eea;
+            text-decoration: none;
+            margin-bottom: 20px;
+            display: inline-block;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/admin" class="back-link">← بازگشت به پنل مدیریت</a>
+        
+        <div class="header">
+            <h1>📝 مدیریت سوالات (FAQ)</h1>
+            <button class="btn btn-primary" onclick="openAddModal()">+ افزودن سوال جدید</button>
+        </div>
+
+        <div id="message"></div>
+        <div id="loading" class="loading">در حال بارگذاری...</div>
+        <div id="faqList" class="faq-list"></div>
+    </div>
+
+    <!-- Modal for Add/Edit FAQ -->
+    <div id="faqModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">افزودن سوال جدید</h2>
+                <button class="btn btn-secondary" onclick="closeModal()">✕</button>
+            </div>
+            <form id="faqForm" onsubmit="saveFAQ(event)">
+                <div class="form-group">
+                    <label>سوال:</label>
+                    <textarea id="question" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>پاسخ:</label>
+                    <textarea id="answer" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>دسته‌بندی:</label>
+                    <select id="category_id">
+                        <option value="">بدون دسته‌بندی</option>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">انصراف</button>
+                    <button type="submit" class="btn btn-primary">ذخیره</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin + '/api';
+        let editingId = null;
+        let categories = [];
+
+        window.onload = function() {
+            loadCategories();
+            loadFAQs();
+        };
+
+        async function loadCategories() {
+            try {
+                const response = await fetch(`${API_BASE}/categories`);
+                if (response.ok) {
+                    categories = await response.json();
+                    const select = document.getElementById('category_id');
+                    select.innerHTML = '<option value="">بدون دسته‌بندی</option>';
+                    categories.forEach(cat => {
+                        const option = document.createElement('option');
+                        option.value = cat.id;
+                        option.textContent = cat.name;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading categories:', error);
+            }
+        }
+
+        async function loadFAQs() {
+            try {
+                document.getElementById('loading').style.display = 'block';
+                const response = await fetch(`${API_BASE}/faqs?page_size=100`);
+                if (!response.ok) throw new Error('Failed to load FAQs');
+                
+                const data = await response.json();
+                // Handle both list response and paginated response
+                const faqs = Array.isArray(data) ? data : (data.items || []);
+                displayFAQs(faqs);
+                document.getElementById('loading').style.display = 'none';
+            } catch (error) {
+                console.error('Error loading FAQs:', error);
+                document.getElementById('loading').innerHTML = '<div class="error">خطا در بارگذاری سوالات</div>';
+            }
+        }
+
+        function displayFAQs(faqs) {
+            const container = document.getElementById('faqList');
+            if (faqs.length === 0) {
+                container.innerHTML = '<div class="loading">هیچ سوالی یافت نشد</div>';
+                return;
+            }
+
+            container.innerHTML = faqs.map(faq => `
+                <div class="faq-item">
+                    <div class="faq-question">${escapeHtml(faq.question)}</div>
+                    <div class="faq-answer">${escapeHtml(faq.answer)}</div>
+                    ${faq.category ? `<div style="color: #667eea; margin-bottom: 10px;">دسته: ${escapeHtml(faq.category.name || '')}</div>` : (faq.category_id ? `<div style="color: #667eea; margin-bottom: 10px;">دسته ID: ${faq.category_id}</div>` : '')}
+                    <div class="faq-actions">
+                        <button class="btn btn-primary" onclick="editFAQ(${faq.id})">ویرایش</button>
+                        <button class="btn btn-danger" onclick="deleteFAQ(${faq.id})">حذف</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function openAddModal() {
+            editingId = null;
+            document.getElementById('modalTitle').textContent = 'افزودن سوال جدید';
+            document.getElementById('faqForm').reset();
+            document.getElementById('faqModal').style.display = 'block';
+        }
+
+        function editFAQ(id) {
+            editingId = id;
+            document.getElementById('modalTitle').textContent = 'ویرایش سوال';
+            
+            fetch(`${API_BASE}/faqs/${id}`)
+                .then(res => res.json())
+                .then(faq => {
+                    document.getElementById('question').value = faq.question;
+                    document.getElementById('answer').value = faq.answer;
+                    document.getElementById('category_id').value = faq.category_id || '';
+                    document.getElementById('faqModal').style.display = 'block';
+                })
+                .catch(error => {
+                    showMessage('خطا در بارگذاری سوال', 'error');
+                });
+        }
+
+        async function saveFAQ(event) {
+            event.preventDefault();
+            const question = document.getElementById('question').value;
+            const answer = document.getElementById('answer').value;
+            const category_id = document.getElementById('category_id').value;
+
+            const data = {
+                question,
+                answer,
+                category_id: category_id ? parseInt(category_id) : null
+            };
+
+            try {
+                const url = editingId ? `${API_BASE}/faqs/${editingId}` : `${API_BASE}/faqs`;
+                const method = editingId ? 'PUT' : 'POST';
+                
+                const response = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (!response.ok) throw new Error('Failed to save FAQ');
+
+                showMessage(editingId ? 'سوال با موفقیت ویرایش شد' : 'سوال با موفقیت افزوده شد', 'success');
+                closeModal();
+                loadFAQs();
+            } catch (error) {
+                showMessage('خطا در ذخیره سوال', 'error');
+            }
+        }
+
+        async function deleteFAQ(id) {
+            if (!confirm('آیا از حذف این سوال اطمینان دارید؟')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/faqs/${id}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) throw new Error('Failed to delete FAQ');
+
+                showMessage('سوال با موفقیت حذف شد', 'success');
+                loadFAQs();
+            } catch (error) {
+                showMessage('خطا در حذف سوال', 'error');
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('faqModal').style.display = 'none';
+            editingId = null;
+        }
+
+        function showMessage(message, type) {
+            const msgDiv = document.getElementById('message');
+            msgDiv.className = type;
+            msgDiv.textContent = message;
+            msgDiv.style.display = 'block';
+            setTimeout(() => {
+                msgDiv.style.display = 'none';
+            }, 3000);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('faqModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        }
+    </script>
+</body>
+</html>
+
