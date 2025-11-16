@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     # OpenAI Configuration
     openai_api_key: str = ""
-    openai_model: str = "gpt-3.5-turbo"
+    openai_model: str = "gpt-3.5-turbo"  # Using GPT-3.5 Turbo model
     embedding_model: str = "text-embedding-3-small"
     
     # External API Configuration

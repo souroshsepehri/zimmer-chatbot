@@ -225,10 +225,16 @@ class SmartAIAgent:
     
     def __init__(self):
         # Initialize OpenAI components only if API key is available
-        self.openai_available = bool(os.getenv('OPENAI_API_KEY'))
+        # Check both environment variable and settings (from .env file)
+        api_key = os.getenv('OPENAI_API_KEY') or settings.openai_api_key
+        self.openai_available = bool(api_key and api_key != "")
         
         if self.openai_available:
             try:
+                # Set API key in environment if not already set (for ChatOpenAI)
+                if not os.getenv('OPENAI_API_KEY') and settings.openai_api_key:
+                    os.environ['OPENAI_API_KEY'] = settings.openai_api_key
+                
                 self.llm = ChatOpenAI(
                     model=settings.openai_model,
                     temperature=0.7,
