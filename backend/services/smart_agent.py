@@ -723,7 +723,7 @@ class SmartAIAgent:
             faq_snippets=[],
             site_metadata={
                 "site_name": "Zimmer",
-                "brand_tone": "حرفه‌ای، مینیمال، آرام، واضح، فارسی",
+                "brand_tone": "حرفه‌ای، مینیمال، آرام و شفاف",
                 "primary_cta": "رزرو مشاوره رایگان",
             },
         )
@@ -1028,60 +1028,60 @@ class SmartAIAgent:
             Complete prompt string in Persian
         """
         site_name = agent_ctx.site_metadata.get('site_name', 'زیمر')
-        brand_tone = agent_ctx.site_metadata.get('brand_tone', 'حرفه‌ای، مینیمال، آرام، واضح، فارسی')
+        brand_tone = agent_ctx.site_metadata.get('brand_tone', 'حرفه‌ای، مینیمال، آرام و شفاف')
         primary_cta = agent_ctx.site_metadata.get('primary_cta', 'رزرو مشاوره رایگان')
         
         prompt_parts = []
         
-        # 1) System instructions (in Persian)
+        # 1) System instructions به فارسی (چند خط)
         prompt_parts.append("تو دستیار هوشمند وب‌سایت Zimmer هستی.")
         prompt_parts.append("")
         prompt_parts.append("لحن: حرفه‌ای، مینیمال، آرام و شفاف.")
-        prompt_parts.append("پاسخ‌ها کوتاه و کاربردی باشند و از حاشیه‌گویی و جملات انگیزشی خودداری کن.")
-        prompt_parts.append("اگر جواب را از متن صفحه یا FAQ می‌گیری، طبیعی توضیح بده، ولی جزئیات غیرضروری نگو.")
-        prompt_parts.append("اگر مطمئن نیستی، صادقانه بگو و پیشنهاد بده کاربر از فرم مشاوره یا راه ارتباطی سایت استفاده کند.")
+        prompt_parts.append("پاسخ‌ها باید کوتاه، دقیق و کاربردی باشند.")
+        prompt_parts.append("از جملات انگیزشی و شعارگونه خودداری کن.")
+        prompt_parts.append("اگر جواب را از متن صفحه یا FAQ می‌گیری، طبیعی توضیح بده ولی اطلاعات اشتباه اضافه نکن.")
+        prompt_parts.append("اگر مطمئن نیستی، صادقانه بگو و پیشنهاد بده کاربر از فرم مشاوره یا راه‌های تماس استفاده کند.")
         prompt_parts.append("")
         
-        # Style adaptation (subtle, not exposed to user)
-        # If style is "auto" or None: ignore and just use the default brand tone
-        if style and style != "auto" and style != "None":
+        # Style adaptation: اگر style == "auto" یا None: همین لحن را نگه دار
+        # اگر style مقدار دیگری بود (مثلاً "casual", "formal") فقط کمی در توضیح لحن اشاره کن
+        # اما نام style را در پاسخ تکرار نکن
+        if style and style not in ("auto", "", None):
             if style == "formal":
                 prompt_parts.append("(لحن: رسمی و محترمانه)")
             elif style == "casual":
                 prompt_parts.append("(لحن: صمیمی‌تر اما همچنان حرفه‌ای)")
             prompt_parts.append("")
         
-        # 2) یک معرفی خیلی کوتاه از Zimmer و context سایت، از روی agent_ctx.site_metadata
-        prompt_parts.append(f"درباره {site_name}:")
-        prompt_parts.append(f"لحن برند: {brand_tone}")
-        prompt_parts.append(f"فراخوان به عمل: {primary_cta}")
+        # 2) خلاصه‌ای کوتاه از site_metadata
+        prompt_parts.append("این دستیار مربوط به وب‌سایت Zimmer (اتوماسیون هوش مصنوعی برای کسب‌وکارها) است.")
         prompt_parts.append("")
         
-        # 3) اگر agent_ctx.page_content موجود است:
+        # 3) اگر page_content هست:
         if agent_ctx.page_content:
             prompt_parts.append("خلاصه‌ای از محتوای صفحه فعلی (ممکن است ناقص باشد):")
-            if agent_ctx.page_title:
-                prompt_parts.append(f"عنوان: {agent_ctx.page_title}")
-            if agent_ctx.page_description:
-                prompt_parts.append(f"توضیحات: {agent_ctx.page_description}")
+            prompt_parts.append(f"عنوان: {agent_ctx.page_title or 'نامشخص'}")
+            prompt_parts.append(f"توضیح کوتاه: {agent_ctx.page_description or 'نامشخص'}")
             prompt_parts.append("")
-            # چند صد کاراکتر اول page_content
+            prompt_parts.append("گزیده‌ای از متن صفحه:")
+            # اولین چند صد کاراکتر از page_content
             content_preview = agent_ctx.page_content[:500] if len(agent_ctx.page_content) > 500 else agent_ctx.page_content
             prompt_parts.append(content_preview)
             prompt_parts.append("")
         
-        # 4) اگر agent_ctx.faq_snippets خالی نیست:
+        # 4) اگر faq_snippets خالی نیست:
         if agent_ctx.faq_snippets:
-            prompt_parts.append("نمونه‌ای از سوالات و پاسخ‌های داخلی مرتبط:")
-            for idx, faq in enumerate(agent_ctx.faq_snippets, 1):
-                prompt_parts.append(f"سوال {idx}: {faq.get('question', '')}")
-                prompt_parts.append(f"پاسخ: {faq.get('answer', '')}")
-                prompt_parts.append("")
+            prompt_parts.append("چند نمونه از سوالات و پاسخ‌های داخلی مرتبط:")
+            for faq in agent_ctx.faq_snippets:
+                prompt_parts.append(f"- سوال: {faq.get('question', '')}")
+                prompt_parts.append(f"  پاسخ: {faq.get('answer', '')}")
+            prompt_parts.append("")
         
-        # 5) خلاصه کوتاهی از تاریخچه‌ی مکالمه (اگر chat_history خالی نبود)، در 1–3 خط، نه به‌صورت JSON خام
+        # 5) اگر chat_history وجود داشت:
+        # خلاصه دو سه خطی از آخرین پیام‌های مهم (بدون dump کردن JSON خام)
         if agent_ctx.chat_history:
             recent_history = agent_ctx.chat_history[-5:]  # Last 5 messages
-            history_lines = []
+            history_summary = []
             for msg in recent_history:
                 role = msg.get('role', 'user')
                 content = msg.get('content', '')
@@ -1089,19 +1089,19 @@ class SmartAIAgent:
                 if len(content) > 100:
                     content = content[:100] + "..."
                 role_label = "کاربر" if role == "user" else "دستیار"
-                history_lines.append(f"{role_label}: {content}")
-            # Join in 1-3 lines
-            if len(history_lines) <= 3:
-                prompt_parts.append("تاریخچه گفتگو: " + " | ".join(history_lines))
+                history_summary.append(f"{role_label}: {content}")
+            # Join in 2-3 lines
+            if len(history_summary) <= 3:
+                prompt_parts.append("خلاصه تاریخچه گفتگو: " + " | ".join(history_summary))
             else:
-                prompt_parts.append("تاریخچه گفتگو: " + " | ".join(history_lines[:3]) + " ...")
+                prompt_parts.append("خلاصه تاریخچه گفتگو: " + " | ".join(history_summary[:3]) + " ...")
             prompt_parts.append("")
         
         # 6) در انتها:
         prompt_parts.append("پیام فعلی کاربر:")
         prompt_parts.append(agent_ctx.user_message)
         prompt_parts.append("")
-        prompt_parts.append("حالا با استفاده از تمام اطلاعات بالا، به سوال کاربر پاسخ بده:")
+        prompt_parts.append("لطفاً بر اساس اطلاعات بالا، یک پاسخ کوتاه، دقیق و کاربردی به زبان فارسی بده.")
         
         return "\n".join(prompt_parts)
     
@@ -1159,21 +1159,15 @@ class SmartAIAgent:
             llm_text: Optional[str] = None
             
             if self.enabled:
-                # PRIMARY PATH: Call LLM when enabled - this MUST execute when self.enabled is True
+                # PRIMARY PATH: Build full prompt with context and call LLM when enabled
+                # This MUST execute when self.enabled is True
                 try:
-                    llm_text = await self._call_llm(message=req.message, style=req.style)
+                    # Build comprehensive prompt with page content, FAQ, history
+                    prompt = self._build_prompt(agent_ctx, req.style)
+                    llm_text = await self._call_llm_with_prompt(prompt)
                 except Exception as e:
                     logger.warning(f"LLM call failed: {e}")
                     llm_text = None
-                
-                # If simple call fails but we have context (page content, FAQ, etc.), try with full context
-                if not llm_text and (agent_ctx.page_content or agent_ctx.faq_snippets):
-                    try:
-                        prompt = self._build_prompt(agent_ctx, req.style)
-                        llm_text = await self._call_llm_with_prompt(prompt)
-                    except Exception as e:
-                        logger.warning(f"Failed to call LLM with full context: {e}")
-                        llm_text = None
             
             # Determine response source and fallback status
             # Check if we have a valid LLM response (non-empty string)
@@ -1539,7 +1533,7 @@ class SmartAIAgent:
             style_enum = ResponseStyle(style)
             if style_enum in AVAILABLE_STYLES:
                 self.default_style = style
-            return True
+                return True
         except ValueError:
             pass
         return False
