@@ -14,6 +14,8 @@ from datetime import datetime
 import logging
 from urllib.parse import urlparse, urljoin
 import time
+from dataclasses import dataclass, field
+from pydantic import BaseModel
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -51,6 +53,36 @@ from schemas.smart_agent import (
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Prompt Orchestrator Models
+# ============================================================================
+
+class FAQMatch(BaseModel):
+    """Represents a matched FAQ entry with relevance score"""
+    question: str
+    answer: str
+    score: float = 0.0
+
+
+@dataclass
+class AgentContext:
+    """
+    Context container for the Smart Agent prompt orchestrator.
+    
+    Contains all information needed to build a comprehensive prompt:
+    - User message and chat history
+    - Page context from current website page
+    - FAQ matches from database
+    - Site metadata (brand tone, CTA, etc.)
+    """
+    user_message: str
+    chat_history: List[Dict[str, str]] = field(default_factory=list)  # List of {role: "user"|"assistant", content: "..."}
+    page_url: Optional[str] = None
+    page_context: Optional[str] = None  # Extracted text content from page
+    faq_matches: List[FAQMatch] = field(default_factory=list)
+    site_metadata: Dict[str, Any] = field(default_factory=dict)  # site_name, brand_tone, primary_cta
 
 # Import agents with fallback
 try:
@@ -228,10 +260,17 @@ class WebContentReader:
 
 class SmartAIAgent:
     """
-    Advanced AI Agent with multi-style response capabilities and web content reading
+    Advanced AI Agent with multi-style response capabilities and web content reading.
+    
+    Uses a Prompt Orchestrator pattern to combine FAQ, page context, and chat history
+    into structured prompts for the LLM.
     """
     
     def __init__(self):
+        # In-memory cache for page context (simple dict: url -> (content, timestamp))
+        self._page_context_cache: Dict[str, Tuple[str, float]] = {}
+        self._cache_ttl = 300  # 5 minutes TTL
+        
         # Initialize OpenAI components only if API key is available
         # Check both environment variable and settings (from .env file)
         api_key = os.getenv('OPENAI_API_KEY') or settings.openai_api_key
@@ -506,45 +545,110 @@ class SmartAIAgent:
         except Exception as e:
             return f"Error searching Wikipedia: {str(e)}"
     
-    async def _get_site_context(self, page_url: str | None) -> Dict[str, Any]:
+    def get_page_context(self, page_url: str) -> Optional[str]:
         """
-        Get site context from a page URL.
-        Only allows Zimmer domains for security.
+        Extract clean text content from a webpage URL.
+        
+        Responsibilities:
+        - Validates URL and domain (only Zimmer domains allowed)
+        - Fetches page using requests + BeautifulSoup
+        - Strips scripts, styles, nav, footer, header
+        - Keeps only main/article/section, headings, paragraphs, lists
+        - Normalizes whitespace
+        - Truncates to ~4000 characters if needed
+        - Uses in-memory caching (5 min TTL)
+        
+        Args:
+            page_url: URL of the page to extract content from
+            
+        Returns:
+            Clean text content string, or None if error/not allowed
         """
         if not page_url or not page_url.strip():
-            return {}
+            return None
         
         try:
             parsed_url = urlparse(page_url)
             host = parsed_url.netloc.lower()
             
-            # Only allow Zimmer domains
+            # Only allow Zimmer domains for security
             allowed_hosts = ["zimmerai.com", "www.zimmerai.com"]
             if not any(allowed in host for allowed in allowed_hosts):
-                logger.warning(f"Site context request for non-allowed domain: {host}")
-                return {}
+                logger.warning(f"Page context request for non-allowed domain: {host}")
+                return None
             
-            # Use existing WebContentReader (async)
-            content = await self.web_reader.read_url_content(page_url, max_length=3000)
+            # Check cache first
+            cache_key = page_url
+            if cache_key in self._page_context_cache:
+                content, timestamp = self._page_context_cache[cache_key]
+                if time.time() - timestamp < self._cache_ttl:
+                    logger.debug(f"Using cached page context for {page_url}")
+                    return content
+                else:
+                    # Cache expired, remove it
+                    del self._page_context_cache[cache_key]
             
-            if "error" in content:
-                logger.warning(f"Error reading site context from {page_url}: {content.get('error')}")
-                return {}
+            # Fetch page
+            response = requests.get(page_url, timeout=10, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            })
+            response.raise_for_status()
             
-            return {
-                "page_url": page_url,
-                "title": content.get("title", ""),
-                "description": content.get("description", ""),
-                "main_content": content.get("main_content", "")[:2000],  # Limit to 2000 chars
-            }
+            # Parse with BeautifulSoup
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Remove unwanted elements
+            for element in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'noscript']):
+                element.decompose()
+            
+            # Extract main content areas
+            content_parts = []
+            
+            # Try to find main/article/section first
+            main_content = soup.find(['main', 'article', 'section'])
+            if main_content:
+                target = main_content
+            else:
+                target = soup.find('body') or soup
+            
+            # Extract text from semantic elements
+            for elem in target.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'div']):
+                text = elem.get_text(strip=True)
+                if text and len(text) > 10:  # Only meaningful text
+                    content_parts.append(text)
+            
+            # Combine and normalize whitespace
+            full_text = ' '.join(content_parts)
+            full_text = re.sub(r'\s+', ' ', full_text).strip()
+            
+            # Truncate to ~4000 characters if needed (keep from start)
+            if len(full_text) > 4000:
+                full_text = full_text[:4000] + "..."
+            
+            # Cache the result
+            self._page_context_cache[cache_key] = (full_text, time.time())
+            
+            return full_text if full_text else None
+            
         except Exception as e:
-            logger.warning(f"Error getting site context from {page_url}: {e}")
-            return {}
+            logger.warning(f"Error extracting page context from {page_url}: {e}")
+            return None
     
-    def _get_faq_context(self, message: str, db: Session) -> List[Dict[str, Any]]:
+    def _get_faq_matches(self, message: str, db: Session) -> List[FAQMatch]:
         """
         Retrieve relevant FAQ entries for the message.
-        Returns a list of FAQ dictionaries.
+        
+        Responsibilities:
+        - Uses simple_chatbot to search FAQs
+        - Converts results to FAQMatch objects
+        - Returns top matches sorted by relevance
+        
+        Args:
+            message: User's message to search against
+            db: Database session
+            
+        Returns:
+            List of FAQMatch objects (top 3 most relevant)
         """
         try:
             simple_chatbot = get_simple_chatbot()
@@ -557,58 +661,87 @@ class SmartAIAgent:
             # Search for relevant FAQs
             faq_results = simple_chatbot.search_faqs(message, min_score=20.0)
             
-            # Return top 3 most relevant FAQs
-            return faq_results[:3]
+            # Convert to FAQMatch objects
+            matches = []
+            for faq in faq_results[:3]:  # Top 3
+                matches.append(FAQMatch(
+                    question=faq.get('question', ''),
+                    answer=faq.get('answer', ''),
+                    score=faq.get('score', 0.0)
+                ))
+            
+            return matches
         except Exception as e:
-            logger.warning(f"Error retrieving FAQ context: {e}")
+            logger.warning(f"Error retrieving FAQ matches: {e}")
             return []
     
-    def _build_prompt(
-        self,
-        message: str,
-        style: str,
-        faq_context: List[Dict[str, Any]],
-        site_context: Dict[str, Any]
-    ) -> str:
+    def build_prompt(self, context: AgentContext) -> str:
         """
-        Build a combined prompt with FAQ context, site context, and user message.
-        Returns a single prompt string in Persian.
-        """
-        # System instructions in Persian
-        prompt_parts = [
-            "تو دستیار رسمی وب‌سایت زیمر هستی. وظیفه تو کمک به کاربران با استفاده از:",
-            "1. اطلاعات موجود در پایگاه داده و FAQ های داخلی (اولویت اول)",
-            "2. محتوای صفحات وب‌سایت زیمر (در صورت نیاز)",
-            "3. اگر اطلاعات کافی نداری، صادقانه بگو که اطلاعات کافی نداری و پیشنهاد کن از فرم تماس/مشاوره استفاده کنند",
-            "لحن پاسخ: حرفه‌ای، دوستانه و مختصر.",
-            ""
-        ]
+        Build a comprehensive prompt from AgentContext.
         
-        # FAQ Context section
-        if faq_context:
-            prompt_parts.append("=== اطلاعات از پایگاه داده (FAQ) ===")
-            for idx, faq in enumerate(faq_context, 1):
-                prompt_parts.append(f"\nسوال {idx}: {faq.get('question', '')}")
-                prompt_parts.append(f"پاسخ: {faq.get('answer', '')}")
+        Responsibilities:
+        - Combines system instructions, FAQ matches, page context, and chat history
+        - Uses site metadata (brand tone, CTA) in instructions
+        - Formats everything in Persian
+        - Returns a single prompt string ready for LLM
+        
+        Args:
+            context: AgentContext containing all necessary information
+            
+        Returns:
+            Complete prompt string in Persian
+        """
+        site_name = context.site_metadata.get('site_name', 'زیمر')
+        brand_tone = context.site_metadata.get('brand_tone', 'حرفه‌ای، مینیمال، آرام، فارسی')
+        primary_cta = context.site_metadata.get('primary_cta', 'رزرو مشاوره رایگان')
+        
+        prompt_parts = []
+        
+        # System role and instructions
+        prompt_parts.append(f"[SYSTEM] نقش: دستیار وب‌سایت {site_name}")
+        prompt_parts.append("")
+        prompt_parts.append("دستورالعمل‌ها:")
+        prompt_parts.append(f"- لحن برند: {brand_tone}")
+        prompt_parts.append("- اولویت اول: استفاده از اطلاعات FAQ و پایگاه داده")
+        prompt_parts.append("- اولویت دوم: استفاده از محتوای صفحه وب‌سایت (در صورت موجود بودن)")
+        prompt_parts.append("- اولویت سوم: دانش عمومی (فقط در صورت نیاز)")
+        prompt_parts.append("- مهم: هیچ‌وقت اطلاعات جعلی نساز (no hallucinations)")
+        prompt_parts.append("- اگر اطلاعات کافی نداری، صادقانه بگو و پیشنهاد کن از فرم تماس استفاده کنند")
+        prompt_parts.append(f"- در صورت مناسب بودن، به {primary_cta} اشاره کن")
+        prompt_parts.append("- هیچ‌وقت از کاربر نخواه که یک 'سبک' انتخاب کند")
+        prompt_parts.append("")
+        
+        # Website context section
+        if context.page_url and context.page_context:
+            prompt_parts.append("=== محتوای صفحه وب‌سایت ===")
+            prompt_parts.append(f"URL: {context.page_url}")
+            prompt_parts.append(f"محتوای صفحه:")
+            prompt_parts.append(context.page_context)
             prompt_parts.append("")
         
-        # Site Context section
-        if site_context:
-            prompt_parts.append("=== محتوای صفحه وب‌سایت ===")
-            prompt_parts.append(f"URL: {site_context.get('page_url', '')}")
-            if site_context.get('title'):
-                prompt_parts.append(f"عنوان: {site_context.get('title', '')}")
-            if site_context.get('description'):
-                prompt_parts.append(f"توضیحات: {site_context.get('description', '')}")
-            if site_context.get('main_content'):
-                prompt_parts.append(f"محتوای اصلی:\n{site_context.get('main_content', '')}")
+        # FAQ matches section
+        if context.faq_matches:
+            prompt_parts.append("=== اطلاعات از پایگاه داده (FAQ) ===")
+            for idx, faq in enumerate(context.faq_matches, 1):
+                prompt_parts.append(f"\nسوال {idx}: {faq.question}")
+                prompt_parts.append(f"پاسخ: {faq.answer}")
+            prompt_parts.append("")
+        
+        # Chat history section
+        if context.chat_history:
+            prompt_parts.append("=== تاریخچه گفتگو ===")
+            for msg in context.chat_history[-5:]:  # Last 5 messages
+                role = msg.get('role', 'user')
+                content = msg.get('content', '')
+                role_label = "کاربر" if role == "user" else "دستیار"
+                prompt_parts.append(f"{role_label}: {content}")
             prompt_parts.append("")
         
         # User question
-        prompt_parts.append("=== سوال کاربر ===")
-        prompt_parts.append(message)
+        prompt_parts.append("=== سوال فعلی کاربر ===")
+        prompt_parts.append(context.user_message)
         prompt_parts.append("")
-        prompt_parts.append("حالا با استفاده از اطلاعات بالا، به سوال کاربر پاسخ بده:")
+        prompt_parts.append("حالا با استفاده از تمام اطلاعات بالا، به سوال کاربر پاسخ بده:")
         
         return "\n".join(prompt_parts)
     
@@ -621,8 +754,23 @@ class SmartAIAgent:
         db: Session | None = None
     ) -> Dict[str, Any]:
         """
-        Get smart AI response with FAQ integration and website context.
-        Behaves like a real website assistant.
+        Get smart AI response using the Prompt Orchestrator pattern.
+        
+        Responsibilities:
+        - Gathers all context (FAQ, page, chat history, site metadata)
+        - Builds AgentContext
+        - Calls build_prompt to create comprehensive prompt
+        - Sends to LLM and returns formatted response
+        
+        Args:
+            message: User's message
+            style: Response style (auto-detected, not exposed to frontend)
+            context: Optional additional context dict
+            page_url: URL of current page user is on
+            db: Database session for FAQ retrieval
+            
+        Returns:
+            Dict with response, metadata, and debug info
         """
         start_time = time.time()
         
@@ -632,21 +780,46 @@ class SmartAIAgent:
             if style == ResponseStyle.AUTO.value:
                 style = self._style_selector_tool(message)
             
-            # Step 1: Retrieve FAQ context
-            faq_context = []
+            # Gather context components
+            # 1. FAQ matches
+            faq_matches = []
             if db:
-                faq_context = self._get_faq_context(message, db)
+                faq_matches = self._get_faq_matches(message, db)
             
-            # Step 2: Get site context from page_url
-            site_context = await self._get_site_context(page_url)
+            # 2. Page context (synchronous now)
+            page_context = None
+            if page_url:
+                page_context = self.get_page_context(page_url)
+            
+            # 3. Chat history (empty for now, can be extended to retrieve from DB/session)
+            chat_history = []
+            # TODO: Retrieve chat history from database/session if needed
+            # Example: chat_history = self._get_chat_history(session_id, db)
+            
+            # 4. Site metadata (hardcoded for Zimmer)
+            site_metadata = {
+                "site_name": "Zimmer",
+                "brand_tone": "حرفه‌ای، مینیمال، آرام، فارسی",
+                "primary_cta": "رزرو مشاوره رایگان"
+            }
+            
+            # Build AgentContext
+            agent_context = AgentContext(
+                user_message=message,
+                chat_history=chat_history,
+                page_url=page_url,
+                page_context=page_context,
+                faq_matches=faq_matches,
+                site_metadata=site_metadata
+            )
             
             # If OpenAI is not available, provide a fallback response
             if not self.openai_available:
                 response_time = time.time() - start_time
                 
                 # Use FAQ if available
-                if faq_context:
-                    fallback_response = faq_context[0].get("answer", "متأسفانه اطلاعات کافی در دسترس نیست.")
+                if faq_matches:
+                    fallback_response = faq_matches[0].answer
                 else:
                     fallback_response = "متأسفانه در حال حاضر قابلیت‌های پیشرفته AI در دسترس نیست. لطفاً از فرم تماس استفاده کنید."
                 
@@ -654,13 +827,13 @@ class SmartAIAgent:
                     "response": fallback_response,
                     "style": style,
                     "response_time": response_time,
-                    "web_content_used": bool(site_context),
-                    "urls_processed": [site_context.get("page_url")] if site_context else [],
-                    "context_used": bool(faq_context),
+                    "web_content_used": bool(page_context),
+                    "urls_processed": [page_url] if page_url and page_context else [],
+                    "context_used": bool(faq_matches),
                     "timestamp": datetime.now().isoformat(),
                     "debug_info": {
-                        "faq_used": bool(faq_context),
-                        "site_used": bool(site_context),
+                        "faq_used": bool(faq_matches),
+                        "site_used": bool(page_context),
                         "fallback_mode": True
                     }
                 }
@@ -675,11 +848,12 @@ class SmartAIAgent:
                 
                 return result
             
-            # Step 3: Build combined prompt
-            combined_prompt = self._build_prompt(message, style, faq_context, site_context)
+            # Build prompt using Prompt Orchestrator
+            combined_prompt = self.build_prompt(agent_context)
             
-            # Step 4: Call LLM with the new prompt
-            # Use a simple system message and the combined prompt as user message
+            # Call LLM with the prompt
+            # The prompt already contains system instructions, so we use it as user message
+            # with a minimal system message
             system_message = "تو دستیار هوشمند فارسی برای وب‌سایت زیمر هستی. همیشه به فارسی پاسخ بده."
             
             messages = [
@@ -695,14 +869,14 @@ class SmartAIAgent:
                 "response": response.content,
                 "style": style,
                 "response_time": response_time,
-                "web_content_used": bool(site_context),
-                "urls_processed": [site_context.get("page_url")] if site_context else [],
-                "context_used": bool(faq_context),
+                "web_content_used": bool(page_context),
+                "urls_processed": [page_url] if page_url and page_context else [],
+                "context_used": bool(faq_matches),
                 "timestamp": datetime.now().isoformat(),
                 "debug_info": {
-                    "faq_used": bool(faq_context),
-                    "site_used": bool(site_context),
-                    "faq_count": len(faq_context),
+                    "faq_used": bool(faq_matches),
+                    "site_used": bool(page_context),
+                    "faq_count": len(faq_matches),
                     "message_length": len(message),
                     "response_length": len(response.content)
                 },
