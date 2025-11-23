@@ -6,7 +6,8 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import HTMLResponse
 from typing import Optional, Dict, Any
 import asyncio
-from datetime import datetime
+import logging
+from datetime import datetime, timezone
 
 from services.smart_agent import smart_agent
 from core.db import get_db
@@ -23,13 +24,12 @@ from schemas.smart_agent import (
 )
 from typing import List
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 @router.post("/smart-agent/chat", response_model=SmartAgentResponse)
-async def smart_agent_chat(
-    request: SmartAgentRequest,
-    db: Session = Depends(get_db)
-):
+async def smart_agent_chat(request: SmartAgentRequest):
     """
     Get smart AI response with FAQ integration and website context.
     
@@ -44,12 +44,28 @@ async def smart_agent_chat(
         request.style = "auto"
         
         # Call get_smart_response with SmartAgentRequest directly
-        result = await smart_agent.get_smart_response(request)
-        
-        return result
+        return await smart_agent.get_smart_response(request)
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Smart agent error: {str(e)}")
+        # Log the exception
+        logger = logging.getLogger(__name__)
+        logger.error(f"Unexpected error in smart_agent_chat endpoint: {str(e)}", exc_info=True)
+        
+        # Return SmartAgentResponse with error (do not raise HTTPException)
+        # This keeps the HTTP contract consistent with openapi.json
+        # Short Persian error message in response field
+        # Full error details in error field
+        return SmartAgentResponse(
+            response="متأسفانه خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید.",
+            style="auto",
+            response_time=0.0,
+            web_content_used=False,
+            urls_processed=[],
+            context_used=False,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            debug_info=None,
+            error=str(e)  # Store the exception string in error field
+        )
 
 @router.post("/smart-agent/read-url", response_model=URLReadResponse)
 async def read_url_content(

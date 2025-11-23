@@ -894,15 +894,18 @@ class SmartAIAgent:
             )
             
             # Return SmartAgentResponse with error
+            # Short Persian error message in response field
+            # Full error details in error field
             return SmartAgentResponse(
-                response="متأسفانه خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید یا از فرم تماس استفاده کنید.",
+                response="متأسفانه خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید.",
                 style=req.style if 'req' in locals() else "auto",
                 response_time=response_time,
                 web_content_used=False,
                 urls_processed=[],
                 context_used=False,
                 timestamp=datetime.now(timezone.utc).isoformat(),
-                error=error_msg
+                debug_info=None,
+                error=str(e)  # Store the exception string in error field
             )
     
     def _create_system_prompt(self, style: str, context: Dict[str, Any] = None) -> str:
