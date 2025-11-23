@@ -44,7 +44,7 @@ async def smart_agent_chat(
         request.style = "auto"
         
         # Call get_smart_response with SmartAgentRequest directly
-        result = await smart_agent.get_smart_response(request, db)
+        result = await smart_agent.get_smart_response(request)
         
         return result
         
