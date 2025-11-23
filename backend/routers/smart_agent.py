@@ -31,25 +31,24 @@ async def smart_agent_chat(
     db: Session = Depends(get_db)
 ):
     """
-    Get smart AI response with multi-style capabilities and web content reading.
+    Get smart AI response with FAQ integration and website context.
     
-    The style parameter from SmartAgentRequest can be:
-    - "auto" (default): Automatically selects the most appropriate style based on the message
-    - Any valid style ID from /api/smart-agent/styles endpoint: formal, friendly, brief, detailed, explainer, marketing
-    
-    The response includes the effective style used (after auto-selection if style was "auto").
+    This endpoint behaves like a real website assistant:
+    - Uses FAQ/database answers when available
+    - Reads current web page content if provided
+    - Combines context for intelligent responses
+    - Answers in Persian with professional but friendly tone
     """
     try:
-        # Pass the style directly - the service will normalize and validate it
-        # If style is None or invalid, it will default to "auto" in the service
+        # Force style to "auto" - do not expose style control to frontend
         result = await smart_agent.get_smart_response(
             message=request.message,
-            style=request.style,  # Pass the style from request (may be None, "auto", or a specific style)
-            context=request.context
+            style="auto",  # Always use auto style
+            context=request.context,
+            page_url=request.page_url,
+            db=db
         )
         
-        # The result already includes the effective style (after normalization and auto-selection)
-        # This ensures the response shows the actual style used, not just the input
         return SmartAgentResponse(**result)
         
     except Exception as e:

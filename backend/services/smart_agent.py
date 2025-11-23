@@ -41,12 +41,14 @@ from langchain_core.callbacks import StreamingStdOutCallbackHandler
 from core.config import settings
 from .debugger import debugger
 from .api_integration import api_integration
+from .simple_chatbot import get_simple_chatbot
 from schemas.smart_agent import (
     AVAILABLE_STYLES,
     STYLE_DEFINITIONS,
     STYLE_INSTRUCTIONS,
     ResponseStyle
 )
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -504,54 +506,165 @@ class SmartAIAgent:
         except Exception as e:
             return f"Error searching Wikipedia: {str(e)}"
     
-    async def get_smart_response(self, message: str, style: str = "auto", context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Get smart AI response with specified style"""
+    async def _get_site_context(self, page_url: str | None) -> Dict[str, Any]:
+        """
+        Get site context from a page URL.
+        Only allows Zimmer domains for security.
+        """
+        if not page_url or not page_url.strip():
+            return {}
+        
+        try:
+            parsed_url = urlparse(page_url)
+            host = parsed_url.netloc.lower()
+            
+            # Only allow Zimmer domains
+            allowed_hosts = ["zimmerai.com", "www.zimmerai.com"]
+            if not any(allowed in host for allowed in allowed_hosts):
+                logger.warning(f"Site context request for non-allowed domain: {host}")
+                return {}
+            
+            # Use existing WebContentReader (async)
+            content = await self.web_reader.read_url_content(page_url, max_length=3000)
+            
+            if "error" in content:
+                logger.warning(f"Error reading site context from {page_url}: {content.get('error')}")
+                return {}
+            
+            return {
+                "page_url": page_url,
+                "title": content.get("title", ""),
+                "description": content.get("description", ""),
+                "main_content": content.get("main_content", "")[:2000],  # Limit to 2000 chars
+            }
+        except Exception as e:
+            logger.warning(f"Error getting site context from {page_url}: {e}")
+            return {}
+    
+    def _get_faq_context(self, message: str, db: Session) -> List[Dict[str, Any]]:
+        """
+        Retrieve relevant FAQ entries for the message.
+        Returns a list of FAQ dictionaries.
+        """
+        try:
+            simple_chatbot = get_simple_chatbot()
+            simple_chatbot.db_session = db
+            
+            # Load FAQs if not already loaded
+            if not simple_chatbot.faqs:
+                simple_chatbot.load_faqs_from_db()
+            
+            # Search for relevant FAQs
+            faq_results = simple_chatbot.search_faqs(message, min_score=20.0)
+            
+            # Return top 3 most relevant FAQs
+            return faq_results[:3]
+        except Exception as e:
+            logger.warning(f"Error retrieving FAQ context: {e}")
+            return []
+    
+    def _build_prompt(
+        self,
+        message: str,
+        style: str,
+        faq_context: List[Dict[str, Any]],
+        site_context: Dict[str, Any]
+    ) -> str:
+        """
+        Build a combined prompt with FAQ context, site context, and user message.
+        Returns a single prompt string in Persian.
+        """
+        # System instructions in Persian
+        prompt_parts = [
+            "تو دستیار رسمی وب‌سایت زیمر هستی. وظیفه تو کمک به کاربران با استفاده از:",
+            "1. اطلاعات موجود در پایگاه داده و FAQ های داخلی (اولویت اول)",
+            "2. محتوای صفحات وب‌سایت زیمر (در صورت نیاز)",
+            "3. اگر اطلاعات کافی نداری، صادقانه بگو که اطلاعات کافی نداری و پیشنهاد کن از فرم تماس/مشاوره استفاده کنند",
+            "لحن پاسخ: حرفه‌ای، دوستانه و مختصر.",
+            ""
+        ]
+        
+        # FAQ Context section
+        if faq_context:
+            prompt_parts.append("=== اطلاعات از پایگاه داده (FAQ) ===")
+            for idx, faq in enumerate(faq_context, 1):
+                prompt_parts.append(f"\nسوال {idx}: {faq.get('question', '')}")
+                prompt_parts.append(f"پاسخ: {faq.get('answer', '')}")
+            prompt_parts.append("")
+        
+        # Site Context section
+        if site_context:
+            prompt_parts.append("=== محتوای صفحه وب‌سایت ===")
+            prompt_parts.append(f"URL: {site_context.get('page_url', '')}")
+            if site_context.get('title'):
+                prompt_parts.append(f"عنوان: {site_context.get('title', '')}")
+            if site_context.get('description'):
+                prompt_parts.append(f"توضیحات: {site_context.get('description', '')}")
+            if site_context.get('main_content'):
+                prompt_parts.append(f"محتوای اصلی:\n{site_context.get('main_content', '')}")
+            prompt_parts.append("")
+        
+        # User question
+        prompt_parts.append("=== سوال کاربر ===")
+        prompt_parts.append(message)
+        prompt_parts.append("")
+        prompt_parts.append("حالا با استفاده از اطلاعات بالا، به سوال کاربر پاسخ بده:")
+        
+        return "\n".join(prompt_parts)
+    
+    async def get_smart_response(
+        self,
+        message: str,
+        style: str = "auto",
+        context: Dict[str, Any] = None,
+        page_url: str | None = None,
+        db: Session | None = None
+    ) -> Dict[str, Any]:
+        """
+        Get smart AI response with FAQ integration and website context.
+        Behaves like a real website assistant.
+        """
         start_time = time.time()
         
         try:
-            # Normalize and validate style
+            # Normalize and validate style (always auto for website assistant)
             style = self._normalize_and_validate_style(style)
-            
-            # Auto-detect style if not specified
             if style == ResponseStyle.AUTO.value:
                 style = self._style_selector_tool(message)
             
-            # Check if message contains URLs
-            urls = self._extract_urls(message)
-            web_content = {}
+            # Step 1: Retrieve FAQ context
+            faq_context = []
+            if db:
+                faq_context = self._get_faq_context(message, db)
             
-            if urls:
-                # Read content from URLs
-                for url in urls:
-                    content = await self.web_reader.read_url_content(url)
-                    web_content[url] = content
+            # Step 2: Get site context from page_url
+            site_context = await self._get_site_context(page_url)
             
             # If OpenAI is not available, provide a fallback response
             if not self.openai_available:
                 response_time = time.time() - start_time
                 
-                # Create a basic response based on available tools
-                fallback_response = self._create_fallback_response(message, style, web_content, context)
+                # Use FAQ if available
+                if faq_context:
+                    fallback_response = faq_context[0].get("answer", "متأسفانه اطلاعات کافی در دسترس نیست.")
+                else:
+                    fallback_response = "متأسفانه در حال حاضر قابلیت‌های پیشرفته AI در دسترس نیست. لطفاً از فرم تماس استفاده کنید."
                 
                 result = {
                     "response": fallback_response,
                     "style": style,
                     "response_time": response_time,
-                    "web_content_used": bool(web_content),
-                    "urls_processed": list(web_content.keys()) if web_content else [],
-                    "context_used": bool(context),
+                    "web_content_used": bool(site_context),
+                    "urls_processed": [site_context.get("page_url")] if site_context else [],
+                    "context_used": bool(faq_context),
                     "timestamp": datetime.now().isoformat(),
                     "debug_info": {
-                        "style_detected": style,
-                        "urls_found": urls,
-                        "web_content_count": len(web_content),
-                        "message_length": len(message),
-                        "response_length": len(fallback_response),
+                        "faq_used": bool(faq_context),
+                        "site_used": bool(site_context),
                         "fallback_mode": True
                     }
                 }
                 
-                # Log to debugger
                 debugger.log_request(
                     session_id="smart_agent",
                     user_message=message,
@@ -562,20 +675,19 @@ class SmartAIAgent:
                 
                 return result
             
-            # Create system prompt with style
-            system_prompt = self._create_system_prompt(style, context)
+            # Step 3: Build combined prompt
+            combined_prompt = self._build_prompt(message, style, faq_context, site_context)
             
-            # Create enhanced prompt with web content
-            enhanced_message = self._enhance_message_with_context(message, web_content, context)
+            # Step 4: Call LLM with the new prompt
+            # Use a simple system message and the combined prompt as user message
+            system_message = "تو دستیار هوشمند فارسی برای وب‌سایت زیمر هستی. همیشه به فارسی پاسخ بده."
             
-            # Get AI response
             messages = [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=enhanced_message)
+                SystemMessage(content=system_message),
+                HumanMessage(content=combined_prompt)
             ]
             
             response = self.llm.invoke(messages)
-            
             response_time = time.time() - start_time
             
             # Prepare result
@@ -583,17 +695,18 @@ class SmartAIAgent:
                 "response": response.content,
                 "style": style,
                 "response_time": response_time,
-                "web_content_used": bool(web_content),
-                "urls_processed": list(web_content.keys()) if web_content else [],
-                "context_used": bool(context),
+                "web_content_used": bool(site_context),
+                "urls_processed": [site_context.get("page_url")] if site_context else [],
+                "context_used": bool(faq_context),
                 "timestamp": datetime.now().isoformat(),
                 "debug_info": {
-                    "style_detected": style,
-                    "urls_found": urls,
-                    "web_content_count": len(web_content),
+                    "faq_used": bool(faq_context),
+                    "site_used": bool(site_context),
+                    "faq_count": len(faq_context),
                     "message_length": len(message),
                     "response_length": len(response.content)
-                }
+                },
+                "error": None
             }
             
             # Log to debugger
@@ -610,6 +723,7 @@ class SmartAIAgent:
         except Exception as e:
             response_time = time.time() - start_time
             error_msg = f"Smart agent error: {str(e)}"
+            logger.error(error_msg, exc_info=True)
             
             # Log error to debugger
             debugger.log_request(
@@ -621,11 +735,14 @@ class SmartAIAgent:
             )
             
             return {
-                "response": "I apologize, but I encountered an error while processing your request. Please try again.",
-                "style": style,
+                "response": "متأسفانه خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید یا از فرم تماس استفاده کنید.",
+                "style": style if 'style' in locals() else "auto",
                 "response_time": response_time,
-                "error": error_msg,
-                "timestamp": datetime.now().isoformat()
+                "web_content_used": False,
+                "urls_processed": [],
+                "context_used": False,
+                "timestamp": datetime.now().isoformat(),
+                "error": error_msg
             }
     
     def _create_system_prompt(self, style: str, context: Dict[str, Any] = None) -> str:

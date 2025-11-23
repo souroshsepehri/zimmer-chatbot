@@ -110,6 +110,10 @@ class SmartAgentRequest(BaseModel):
         default=None,
         description="Additional context to provide to the agent"
     )
+    page_url: Optional[str] = Field(
+        default=None,
+        description="URL of the current web page the user is on"
+    )
 
     @field_validator('style')
     @classmethod
