@@ -847,7 +847,12 @@ class SmartAIAgent:
             context_used = bool(agent_context.page_context or agent_context.faq_matches or agent_context.chat_history)
             
             # Resolve final style
-            style = req.style or "auto"
+            # If req.style is not None and not "auto", keep it
+            # Otherwise use "auto"
+            if req.style and req.style != "auto":
+                style = req.style
+            else:
+                style = "auto"
             
             result = SmartAgentResponse(
                 response=llm_response_text,
