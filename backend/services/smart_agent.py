@@ -708,7 +708,7 @@ class SmartAIAgent:
         
         # Initialize AgentContext
         return AgentContext(
-            user_message=message,
+                    user_message=message,
             session_id=session_id,
             page_url=page_url,
             chat_history=history,
@@ -1015,6 +1015,16 @@ class SmartAIAgent:
             page_url = raw_ctx.get("page_url")
             page_ctx = await self._read_page_context(page_url)
             
+            # Get FAQ matches (works regardless of OpenAI availability)
+            faq_matches = []
+            faq_error = None
+            try:
+                faq_matches = await self._get_faq_matches(req.message, limit=5)
+            except Exception as e:
+                logger.warning(f"Error retrieving FAQ matches: {e}")
+                faq_error = str(e)
+                faq_matches = []
+            
             # If OpenAI is not available, use fallback stub behavior
             if not self.openai_available:
                 # Use existing _generate_response stub (if it exists)
@@ -1024,16 +1034,25 @@ class SmartAIAgent:
                 
                 fallback_response = "متأسفانه در حال حاضر قابلیت‌های پیشرفته AI در دسترس نیست. لطفاً از فرم تماس استفاده کنید."
                 
-                # Build debug_info with page context details
+                # Optionally enrich response if FAQs were found
+                if faq_matches:
+                    fallback_response += "\n\n(اطلاعات داخلی: چند سوال و جواب مرتبط پیدا شد.)"
+                
+                # Build debug_info with page context and FAQ details
                 has_page_content = bool(page_ctx.get("main_content")) and "error" not in page_ctx
                 debug_info_base = {
                     "session_id": raw_ctx.get("session_id"),
                     "page_url": page_url,
                     "has_page_content": has_page_content,
-                    "faq_count": 0,
+                    "faq_matches": faq_matches,
+                    "faq_count": len(faq_matches),
                     "history_len": len(raw_ctx.get("history", [])),
                     "fallback_used": True,
                 }
+                
+                # Add FAQ error if one occurred
+                if faq_error:
+                    debug_info_base["faq_error"] = faq_error
                 
                 # Add page details to debug_info
                 if page_url:
@@ -1065,6 +1084,17 @@ class SmartAIAgent:
                     error=None,
                 )
             
+            # Get FAQ matches early (works regardless of OpenAI availability)
+            # This is separate from the enrichment that happens later
+            faq_matches = []
+            faq_error = None
+            try:
+                faq_matches = await self._get_faq_matches(req.message, limit=5)
+            except Exception as e:
+                logger.warning(f"Error retrieving FAQ matches: {e}")
+                faq_error = str(e)
+                faq_matches = []
+            
             # Build AgentContext using helper
             agent_ctx = self._build_agent_context(req.message, raw_ctx)
             
@@ -1073,7 +1103,7 @@ class SmartAIAgent:
             page_url = agent_ctx.page_url or raw_ctx.get("page_url")
             page_ctx = await self._read_page_context(page_url)
             
-            # Get database session for FAQ retrieval
+            # Get database session for FAQ retrieval (for enrichment)
             # Use get_db as a generator (it yields a session and handles cleanup)
             db_gen = get_db()
             db = next(db_gen)
@@ -1082,7 +1112,7 @@ class SmartAIAgent:
                 if agent_ctx.page_url:
                     await self._enrich_with_page_content(agent_ctx)
                 
-                # Enrich with FAQ snippets
+                # Enrich with FAQ snippets (this is for the prompt, separate from debug_info)
                 await self._enrich_with_faq(agent_ctx, db)
             finally:
                 # Complete the generator to trigger cleanup
@@ -1116,16 +1146,21 @@ class SmartAIAgent:
             else:
                 style = "auto"
             
-            # Build debug_info with page context details
+            # Build debug_info with page context and FAQ details
             has_page_content = bool(page_ctx.get("main_content")) and "error" not in page_ctx
             debug_info_base = {
                 "session_id": agent_ctx.session_id,
                 "page_url": page_url,
                 "has_page_content": has_page_content,
-                "faq_count": len(agent_ctx.faq_snippets),
+                "faq_matches": faq_matches,  # Include FAQ matches in debug_info
+                "faq_count": len(faq_matches),
                 "history_len": len(agent_ctx.chat_history),
                 "fallback_used": fallback_used,
             }
+            
+            # Add FAQ error if one occurred
+            if faq_error:
+                debug_info_base["faq_error"] = faq_error
             
             # Add page details to debug_info
             if page_url:
@@ -1261,6 +1296,67 @@ class SmartAIAgent:
         """Read content from a URL"""
         return await self.web_reader.read_url_content(url)
     
+    async def _get_faq_matches(self, message: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Retrieve relevant FAQ entries for a message.
+        
+        Uses the existing simple_chatbot service to search for FAQs.
+        Returns a list of dicts with FAQ information for debug_info.
+        
+        Args:
+            message: User's message to search against
+            limit: Maximum number of FAQ matches to return (default: 5)
+            
+        Returns:
+            List of dicts with keys: id, question, answer, score, category
+            Returns empty list on error (defensive)
+        """
+        if not message or not message.strip():
+            return []
+        
+        try:
+            from core.db import get_db
+            
+            # Get database session
+            db_gen = get_db()
+            db = next(db_gen)
+            
+            try:
+                simple_chatbot = get_simple_chatbot()
+                simple_chatbot.db_session = db
+                
+                # Load FAQs if not already loaded
+                if not simple_chatbot.faqs:
+                    simple_chatbot.load_faqs_from_db()
+                
+                # Search for relevant FAQs
+                faq_results = simple_chatbot.search_faqs(message, min_score=20.0)
+                
+                # Convert to the required format and limit results
+                matches = []
+                for faq in faq_results[:limit]:
+                    matches.append({
+                        "id": faq.get("id"),
+                        "question": faq.get("question", ""),
+                        "answer": faq.get("answer", ""),
+                        "score": faq.get("score", 0.0),
+                        "category": faq.get("category", ""),
+                    })
+                
+                return matches
+                
+            finally:
+                # Complete the generator to trigger cleanup
+                try:
+                    next(db_gen, None)
+                except StopIteration:
+                    pass
+                    
+        except Exception as e:
+            # Handle failures defensively - log and return empty list
+            logger.warning(f"Error retrieving FAQ matches for message '{message[:50]}...': {e}")
+            return []
+    
     async def _read_page_context(self, page_url: Optional[str]) -> Dict[str, Any]:
         """
         Read page context from a URL using the same logic as /api/smart-agent/read-url.
@@ -1361,7 +1457,7 @@ class SmartAIAgent:
             style_enum = ResponseStyle(style)
             if style_enum in AVAILABLE_STYLES:
                 self.default_style = style
-                return True
+            return True
         except ValueError:
             pass
         return False
