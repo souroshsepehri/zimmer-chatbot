@@ -319,6 +319,7 @@ class SmartAIAgent:
         # Check both environment variable and settings (from .env file)
         api_key = os.getenv('OPENAI_API_KEY') or settings.openai_api_key
         self.openai_available = bool(api_key and api_key != "")
+        self.enabled = self.openai_available  # Alias for compatibility
         
         if self.openai_available:
             try:
@@ -326,9 +327,10 @@ class SmartAIAgent:
                 if not os.getenv('OPENAI_API_KEY') and settings.openai_api_key:
                     os.environ['OPENAI_API_KEY'] = settings.openai_api_key
                 
+                self.model_name = settings.openai_model
                 self.llm = ChatOpenAI(
-                    model=settings.openai_model,
-                    temperature=0.7,
+                    model=self.model_name,
+                    temperature=0.4,  # Use 0.3-0.5 range as specified
                     max_tokens=2000,
                     streaming=True,
                     callbacks=[StreamingStdOutCallbackHandler()]
@@ -337,12 +339,15 @@ class SmartAIAgent:
             except Exception as e:
                 logger.warning(f"OpenAI initialization failed: {e}")
                 self.openai_available = False
+                self.enabled = False
                 self.llm = None
                 self.embeddings = None
+                self.model_name = None
         else:
             logger.info("OpenAI API key not set. Smart Agent will run in limited mode.")
             self.llm = None
             self.embeddings = None
+            self.model_name = None
         
         self.memory = ConversationBufferWindowMemory(k=10)
         self.web_reader = WebContentReader()
@@ -759,7 +764,7 @@ class SmartAIAgent:
             logger.exception(f"Error enriching page content for {agent_ctx.page_url}: {e}")
             # Leave page_content empty on error
     
-    async def _enrich_with_faq(self, agent_ctx: AgentContext, db: Session) -> None:
+    async def _enrich_with_faq(self, agent_ctx: AgentContext, limit: int = 5) -> None:
         """
         Enrich AgentContext with relevant FAQ snippets.
         
@@ -768,32 +773,46 @@ class SmartAIAgent:
         
         Args:
             agent_ctx: AgentContext to enrich (modified in place)
-            db: Database session for FAQ queries
+            limit: Maximum number of FAQ entries to retrieve (default: 5)
         """
         try:
-            simple_chatbot = get_simple_chatbot()
-            simple_chatbot.db_session = db
+            from core.db import get_db
             
-            # Load FAQs if not already loaded
-            if not simple_chatbot.faqs:
-                simple_chatbot.load_faqs_from_db()
+            # Get database session internally
+            db_gen = get_db()
+            db = next(db_gen)
             
-            # Search for relevant FAQs
-            faq_results = simple_chatbot.search_faqs(agent_ctx.user_message, min_score=20.0)
-            
-            # Convert to faq_snippets format with all required fields
-            snippets = []
-            for faq in faq_results[:5]:  # Top 5 matches
-                snippets.append({
-                    "id": faq.get("id"),
-                    "question": faq.get("question", ""),
-                    "answer": faq.get("answer", ""),
-                    "score": faq.get("score", 0.0),
-                    "category": faq.get("category", ""),
-                })
-            
-            agent_ctx.faq_snippets = snippets
-            
+            try:
+                simple_chatbot = get_simple_chatbot()
+                simple_chatbot.db_session = db
+                
+                # Load FAQs if not already loaded
+                if not simple_chatbot.faqs:
+                    simple_chatbot.load_faqs_from_db()
+                
+                # Search for relevant FAQs
+                faq_results = simple_chatbot.search_faqs(agent_ctx.user_message, min_score=20.0)
+                
+                # Convert to faq_snippets format with all required fields
+                snippets = []
+                for faq in faq_results[:limit]:
+                    snippets.append({
+                        "id": faq.get("id"),
+                        "question": faq.get("question", ""),
+                        "answer": faq.get("answer", ""),
+                        "score": faq.get("score", 0.0),
+                        "category": faq.get("category", ""),
+                    })
+                
+                agent_ctx.faq_snippets = snippets
+                
+            finally:
+                # Complete the generator to trigger cleanup
+                try:
+                    next(db_gen, None)
+                except StopIteration:
+                    pass
+                    
         except Exception as e:
             logger.warning(f"Error enriching FAQ for message: {e}")
             # Leave faq_snippets empty on error
@@ -839,6 +858,68 @@ class SmartAIAgent:
             logger.warning(f"Error retrieving FAQ matches: {e}")
             return []
     
+    async def _generate_response(self, message: str, user_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Generate a fallback response using the existing answering agent system.
+        
+        This is the stub behavior used when LLM is not available or fails.
+        Uses the existing answering_agent to get a response.
+        
+        Args:
+            message: User's message
+            user_id: Optional user/session identifier
+            
+        Returns:
+            Dict with keys: answer, intent, confidence, metadata
+        """
+        try:
+            from services.answering_agent import AnsweringAgent
+            from core.db import get_db
+            
+            # Get database session
+            db_gen = get_db()
+            db = next(db_gen)
+            
+            try:
+                # Use the existing answering agent
+                answering_agent = AnsweringAgent()
+                result = answering_agent.answer_user_query(
+                    user_id=user_id,
+                    message=message,
+                    context={},
+                    db=db
+                )
+                
+                return {
+                    "answer": result.get("answer", "متأسفانه پاسخ مناسبی پیدا نشد."),
+                    "intent": result.get("intent"),
+                    "confidence": result.get("confidence"),
+                    "metadata": {
+                        "agent_type": result.get("source", "answering_agent"),
+                        "success": result.get("success", False),
+                    }
+                }
+            finally:
+                # Complete the generator to trigger cleanup
+                try:
+                    next(db_gen, None)
+                except StopIteration:
+                    pass
+                    
+        except Exception as e:
+            logger.exception(f"Error in _generate_response: {e}")
+            # Return a safe fallback
+            return {
+                "answer": "متأسفانه در پردازش درخواست شما خطایی رخ داد. لطفاً دوباره تلاش کنید.",
+                "intent": None,
+                "confidence": None,
+                "metadata": {
+                    "agent_type": "stub",
+                    "success": False,
+                    "error": str(e)
+                }
+            }
+    
     async def _call_llm(self, prompt: str) -> Optional[str]:
         """
         Call the LLM with the given prompt.
@@ -852,11 +933,11 @@ class SmartAIAgent:
         Returns:
             Assistant's message text, or None if unavailable/failed
         """
-        if not self.openai_available or not self.llm:
+        if not self.enabled or not self.llm:
             return None
         
         try:
-            # Use the existing LLM client
+            # Use the existing LLM client with appropriate settings
             system_message = "تو دستیار هوشمند فارسی برای وب‌سایت زیمر هستی. همیشه به فارسی پاسخ بده."
             
             messages = [
@@ -864,6 +945,7 @@ class SmartAIAgent:
                 HumanMessage(content=prompt)
             ]
             
+            # Use temperature 0.3-0.5 as specified
             response = self.llm.invoke(messages)
             llm_text = response.content.strip()
             
@@ -898,21 +980,19 @@ class SmartAIAgent:
         
         prompt_parts = []
         
-        # System-level instructions (in Persian)
-        prompt_parts.append("=== نقش و دستورالعمل‌ها ===")
+        # System instructions block (in Persian)
+        prompt_parts.append("=== دستورالعمل‌های سیستم ===")
         prompt_parts.append(f"تو دستیار هوشمند وب‌سایت {site_name} هستی.")
-        prompt_parts.append(f"لحن برند: {brand_tone}")
         prompt_parts.append("")
-        prompt_parts.append("دستورالعمل‌های پاسخ‌دهی:")
-        prompt_parts.append("- همیشه به فارسی و با لحن حرفه‌ای، مینیمال، آرام و مفید پاسخ بده")
-        prompt_parts.append("- مختصر و مفید باش، اما نه ربات‌وار")
-        prompt_parts.append("- اگر کاربر درباره محتوای صفحه فعلی سوال کرد، از محتوای صفحه استفاده کن")
-        prompt_parts.append("- اگر کاربر سوالات عمومی درباره زیمر یا خدمات پرسید، از FAQ + اطلاعات سایت استفاده کن")
-        prompt_parts.append("- اگر چیزی را نمی‌دانی، صادقانه بگو که مطمئن نیستی و به جای توهم‌سازی، پیشنهاد کن از فرم تماس استفاده کند")
-        prompt_parts.append("- هرگز نام «استایل» یا پارامترهای داخلی را در پاسخ ذکر نکن")
+        prompt_parts.append("لحن برند زیمر:")
+        prompt_parts.append("- حرفه‌ای، مینیمال، آرام، شفاف")
+        prompt_parts.append("- پاسخ‌ها کوتاه و کاربردی، بدون حاشیه‌گویی")
+        prompt_parts.append("- اگر جواب را از متن صفحه یا FAQ می‌گیری، به شکل طبیعی توضیح بده")
+        prompt_parts.append("- اگر جواب را نمی‌دانی، صادقانه بگو مطمئن نیستی و پیشنهاد بده کاربر از فرم مشاوره یا راه ارتباطی استفاده کند")
         prompt_parts.append("")
         
         # Style adaptation (subtle, not exposed to user)
+        # If style is "auto" or None: ignore and just use the default brand tone
         if style and style != "auto" and style != "None":
             if style == "formal":
                 prompt_parts.append("(لحن: رسمی و محترمانه)")
@@ -920,54 +1000,58 @@ class SmartAIAgent:
                 prompt_parts.append("(لحن: صمیمی‌تر اما همچنان حرفه‌ای)")
             prompt_parts.append("")
         
-        # Site and brand description
-        prompt_parts.append("=== درباره سایت ===")
+        # Short description of Zimmer and site from site_metadata
+        prompt_parts.append("=== درباره زیمر ===")
         prompt_parts.append(f"سایت: {site_name}")
         prompt_parts.append(f"لحن برند: {brand_tone}")
-        prompt_parts.append(f"فراخوان به عمل اصلی: {primary_cta}")
+        prompt_parts.append(f"فراخوان به عمل: {primary_cta}")
         prompt_parts.append("")
         
-        # Website context (page_url + page_content)
+        # If page_content is not empty: add section with title/description and truncated content
         if agent_ctx.page_content:
-            prompt_parts.append("=== محتوای صفحه فعلی ===")
-            if agent_ctx.page_url:
-                prompt_parts.append(f"آدرس صفحه: {agent_ctx.page_url}")
+            prompt_parts.append("=== خلاصه‌ای از محتوای صفحه فعلی ===")
             if agent_ctx.page_title:
-                prompt_parts.append(f"عنوان صفحه: {agent_ctx.page_title}")
+                prompt_parts.append(f"عنوان: {agent_ctx.page_title}")
             if agent_ctx.page_description:
                 prompt_parts.append(f"توضیحات: {agent_ctx.page_description}")
+            if agent_ctx.page_url:
+                prompt_parts.append(f"آدرس: {agent_ctx.page_url}")
             prompt_parts.append("")
-            prompt_parts.append("محتوای اصلی صفحه:")
-            # Truncate page_content if too long (already done in _enrich_with_page_content)
+            prompt_parts.append("محتوای صفحه:")
+            # Content is already truncated in _enrich_with_page_content
             prompt_parts.append(agent_ctx.page_content)
             prompt_parts.append("")
         
-        # FAQ matches section
+        # If faq_snippets is not empty: add section with question + answer pairs
         if agent_ctx.faq_snippets:
-            prompt_parts.append("=== سوالات و پاسخ‌های مرتبط ===")
+            prompt_parts.append("=== سوالات و پاسخ‌های داخلی مرتبط ===")
             for idx, faq in enumerate(agent_ctx.faq_snippets, 1):
                 prompt_parts.append(f"\nسوال {idx}: {faq.get('question', '')}")
                 prompt_parts.append(f"پاسخ: {faq.get('answer', '')}")
-                if faq.get('category'):
-                    prompt_parts.append(f"دسته‌بندی: {faq.get('category')}")
             prompt_parts.append("")
         
-        # Chat history summary (last 3-5 turns, not raw JSON)
+        # Optionally a brief summary of recent history (last few turns) in 1-3 lines, not raw JSON
         if agent_ctx.chat_history:
-            prompt_parts.append("=== تاریخچه گفتگو (خلاصه) ===")
-            # Take last 5 messages
+            prompt_parts.append("=== خلاصه تاریخچه گفتگو ===")
+            # Take last 3-5 messages and summarize briefly
             recent_history = agent_ctx.chat_history[-5:]
+            history_summary = []
             for msg in recent_history:
                 role = msg.get('role', 'user')
                 content = msg.get('content', '')
-                role_label = "کاربر" if role == "user" else "دستیار"
                 # Truncate long messages
-                if len(content) > 200:
-                    content = content[:200] + "..."
-                prompt_parts.append(f"{role_label}: {content}")
+                if len(content) > 150:
+                    content = content[:150] + "..."
+                role_label = "کاربر" if role == "user" else "دستیار"
+                history_summary.append(f"{role_label}: {content}")
+            # Join in 1-3 lines
+            if len(history_summary) <= 3:
+                prompt_parts.append(" | ".join(history_summary))
+            else:
+                prompt_parts.append(" | ".join(history_summary[:3]) + " ...")
             prompt_parts.append("")
         
-        # User question (explicit)
+        # Finally, clearly mark the user message
         prompt_parts.append("=== پیام کاربر ===")
         prompt_parts.append(agent_ctx.user_message)
         prompt_parts.append("")
@@ -1025,112 +1109,35 @@ class SmartAIAgent:
                 faq_error = str(e)
                 faq_matches = []
             
-            # If OpenAI is not available, use fallback stub behavior
-            if not self.openai_available:
-                # Use existing _generate_response stub (if it exists)
-                # For now, return a simple fallback message
-                end_time = datetime.now(timezone.utc)
-                response_time = (end_time - start_time).total_seconds()
-                
-                fallback_response = "متأسفانه در حال حاضر قابلیت‌های پیشرفته AI در دسترس نیست. لطفاً از فرم تماس استفاده کنید."
-                
-                # Optionally enrich response if FAQs were found
-                if faq_matches:
-                    fallback_response += "\n\n(اطلاعات داخلی: چند سوال و جواب مرتبط پیدا شد.)"
-                
-                # Build debug_info with page context and FAQ details
-                has_page_content = bool(page_ctx.get("main_content")) and "error" not in page_ctx
-                debug_info_base = {
-                    "session_id": raw_ctx.get("session_id"),
-                    "page_url": page_url,
-                    "has_page_content": has_page_content,
-                    "faq_matches": faq_matches,
-                    "faq_count": len(faq_matches),
-                    "history_len": len(raw_ctx.get("history", [])),
-                    "fallback_used": True,
-                }
-                
-                # Add FAQ error if one occurred
-                if faq_error:
-                    debug_info_base["faq_error"] = faq_error
-                
-                # Add page details to debug_info
-                if page_url:
-                    debug_info_base["page_title"] = page_ctx.get("title")
-                    debug_info_base["page_description"] = page_ctx.get("description")
-                    # Add preview of page content (first 200-300 chars)
-                    main_content = page_ctx.get("main_content", "")
-                    if main_content:
-                        preview_length = min(300, len(main_content))
-                        debug_info_base["page_content_preview"] = main_content[:preview_length]
-                    # Add error if page reading failed
-                    if "error" in page_ctx:
-                        debug_info_base["page_read_error"] = page_ctx["error"]
-                        debug_info_base["has_page_content"] = False
-                else:
-                    # If no page_url, ensure these fields are set appropriately
-                    debug_info_base["page_url"] = None
-                    debug_info_base["has_page_content"] = False
-                
-                return SmartAgentResponse(
-                    response=fallback_response,
-                    style=req.style or "auto",
-                    response_time=response_time,
-                    web_content_used=False,
-                    urls_processed=[],
-                    context_used=False,
-                    timestamp=end_time.isoformat(),
-                    debug_info=debug_info_base,
-                    error=None,
-                )
-            
-            # Get FAQ matches early (works regardless of OpenAI availability)
-            # This is separate from the enrichment that happens later
-            faq_matches = []
-            faq_error = None
-            try:
-                faq_matches = await self._get_faq_matches(req.message, limit=5)
-            except Exception as e:
-                logger.warning(f"Error retrieving FAQ matches: {e}")
-                faq_error = str(e)
-                faq_matches = []
-            
             # Build AgentContext using helper
             agent_ctx = self._build_agent_context(req.message, raw_ctx)
             
-            # Read page context using the helper (this is separate from enrichment)
-            # This provides page info for debug_info regardless of whether we use it in the prompt
-            page_url = agent_ctx.page_url or raw_ctx.get("page_url")
-            page_ctx = await self._read_page_context(page_url)
+            # Enrich context (safe - errors are caught inside helpers)
+            await self._enrich_with_page_content(agent_ctx)
+            await self._enrich_with_faq(agent_ctx)
             
-            # Get database session for FAQ retrieval (for enrichment)
-            # Use get_db as a generator (it yields a session and handles cleanup)
-            db_gen = get_db()
-            db = next(db_gen)
-            try:
-                # Enrich with page content if page_url exists
-                if agent_ctx.page_url:
-                    await self._enrich_with_page_content(agent_ctx)
-                
-                # Enrich with FAQ snippets (this is for the prompt, separate from debug_info)
-                await self._enrich_with_faq(agent_ctx, db)
-            finally:
-                # Complete the generator to trigger cleanup
-                try:
-                    next(db_gen, None)
-                except StopIteration:
-                    pass
+            # Default values for response
+            llm_text: Optional[str] = None
+            fallback_used = False
+            intent = None
+            confidence = None
+            source = "smart_agent_llm"
             
-            # Build prompt using helper
-            prompt = self._build_prompt(agent_ctx, req.style)
+            # Try LLM if enabled
+            if self.enabled:
+                prompt = self._build_prompt(agent_ctx, req.style)
+                llm_text = await self._call_llm(prompt)
             
-            # Call LLM
-            llm_text = await self._call_llm(prompt)
-            
-            # If LLM call failed or returned empty, use fallback
+            # If LLM is unavailable or failed, use stub
             if not llm_text:
                 fallback_used = True
-                llm_text = "متأسفانه در پردازش درخواست شما خطایی رخ داد. لطفاً دوباره تلاش کنید یا از فرم تماس استفاده کنید."
+                core = await self._generate_response(req.message, user_id=raw_ctx.get("session_id"))
+                answer_text = core.get("answer", "")
+                intent = core.get("intent")
+                confidence = core.get("confidence")
+                source = core.get("metadata", {}).get("agent_type", "stub")
+            else:
+                answer_text = llm_text
             
             end_time = datetime.now(timezone.utc)
             response_time = (end_time - start_time).total_seconds()
@@ -1146,26 +1153,31 @@ class SmartAIAgent:
             else:
                 style = "auto"
             
-            # Build debug_info with page context and FAQ details
+            # Build debug_info with all context details
             has_page_content = bool(page_ctx.get("main_content")) and "error" not in page_ctx
             debug_info_base = {
                 "session_id": agent_ctx.session_id,
-                "page_url": page_url,
+                "page_url": agent_ctx.page_url,
                 "has_page_content": has_page_content,
-                "faq_matches": faq_matches,  # Include FAQ matches in debug_info
-                "faq_count": len(faq_matches),
+                "page_title": agent_ctx.page_title,
+                "faq_count": len(agent_ctx.faq_snippets),
                 "history_len": len(agent_ctx.chat_history),
+                "intent": intent,
+                "confidence": confidence,
+                "source": source,
                 "fallback_used": fallback_used,
             }
             
-            # Add FAQ error if one occurred
+            # Add FAQ matches to debug_info
+            if faq_matches:
+                debug_info_base["faq_matches"] = faq_matches
             if faq_error:
                 debug_info_base["faq_error"] = faq_error
             
             # Add page details to debug_info
             if page_url:
-                debug_info_base["page_title"] = page_ctx.get("title")
-                debug_info_base["page_description"] = page_ctx.get("description")
+                debug_info_base["page_title"] = page_ctx.get("title") or agent_ctx.page_title
+                debug_info_base["page_description"] = page_ctx.get("description") or agent_ctx.page_description
                 # Add preview of page content (first 200-300 chars)
                 main_content = page_ctx.get("main_content", "")
                 if main_content:
@@ -1182,7 +1194,7 @@ class SmartAIAgent:
             
             # Build response dict matching SmartAgentResponse
             result = SmartAgentResponse(
-                response=llm_text,
+                response=answer_text,
                 style=style,
                 response_time=response_time,
                 web_content_used=web_content_used,
@@ -1197,7 +1209,7 @@ class SmartAIAgent:
             debugger.log_request(
                 session_id=agent_ctx.session_id or "smart_agent",
                 user_message=req.message,
-                response=llm_text,
+                response=answer_text,
                 response_time=response_time,
                 debug_info=result.debug_info or {}
             )
