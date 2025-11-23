@@ -1011,6 +1011,10 @@ class SmartAIAgent:
             # Normalize context to a dict
             raw_ctx = req.context or {}
             
+            # Read page context even in fallback mode (for debug_info)
+            page_url = raw_ctx.get("page_url")
+            page_ctx = await self._read_page_context(page_url)
+            
             # If OpenAI is not available, use fallback stub behavior
             if not self.openai_available:
                 # Use existing _generate_response stub (if it exists)
@@ -1020,6 +1024,35 @@ class SmartAIAgent:
                 
                 fallback_response = "متأسفانه در حال حاضر قابلیت‌های پیشرفته AI در دسترس نیست. لطفاً از فرم تماس استفاده کنید."
                 
+                # Build debug_info with page context details
+                has_page_content = bool(page_ctx.get("main_content")) and "error" not in page_ctx
+                debug_info_base = {
+                    "session_id": raw_ctx.get("session_id"),
+                    "page_url": page_url,
+                    "has_page_content": has_page_content,
+                    "faq_count": 0,
+                    "history_len": len(raw_ctx.get("history", [])),
+                    "fallback_used": True,
+                }
+                
+                # Add page details to debug_info
+                if page_url:
+                    debug_info_base["page_title"] = page_ctx.get("title")
+                    debug_info_base["page_description"] = page_ctx.get("description")
+                    # Add preview of page content (first 200-300 chars)
+                    main_content = page_ctx.get("main_content", "")
+                    if main_content:
+                        preview_length = min(300, len(main_content))
+                        debug_info_base["page_content_preview"] = main_content[:preview_length]
+                    # Add error if page reading failed
+                    if "error" in page_ctx:
+                        debug_info_base["page_read_error"] = page_ctx["error"]
+                        debug_info_base["has_page_content"] = False
+                else:
+                    # If no page_url, ensure these fields are set appropriately
+                    debug_info_base["page_url"] = None
+                    debug_info_base["has_page_content"] = False
+                
                 return SmartAgentResponse(
                     response=fallback_response,
                     style=req.style or "auto",
@@ -1028,19 +1061,17 @@ class SmartAIAgent:
                     urls_processed=[],
                     context_used=False,
                     timestamp=end_time.isoformat(),
-                    debug_info={
-                        "session_id": raw_ctx.get("session_id"),
-                        "has_page_content": False,
-                        "faq_count": 0,
-                        "history_len": len(raw_ctx.get("history", [])),
-                        "page_url": raw_ctx.get("page_url"),
-                        "fallback_used": True,
-                    },
+                    debug_info=debug_info_base,
                     error=None,
                 )
             
             # Build AgentContext using helper
             agent_ctx = self._build_agent_context(req.message, raw_ctx)
+            
+            # Read page context using the helper (this is separate from enrichment)
+            # This provides page info for debug_info regardless of whether we use it in the prompt
+            page_url = agent_ctx.page_url or raw_ctx.get("page_url")
+            page_ctx = await self._read_page_context(page_url)
             
             # Get database session for FAQ retrieval
             # Use get_db as a generator (it yields a session and handles cleanup)
@@ -1085,6 +1116,35 @@ class SmartAIAgent:
             else:
                 style = "auto"
             
+            # Build debug_info with page context details
+            has_page_content = bool(page_ctx.get("main_content")) and "error" not in page_ctx
+            debug_info_base = {
+                "session_id": agent_ctx.session_id,
+                "page_url": page_url,
+                "has_page_content": has_page_content,
+                "faq_count": len(agent_ctx.faq_snippets),
+                "history_len": len(agent_ctx.chat_history),
+                "fallback_used": fallback_used,
+            }
+            
+            # Add page details to debug_info
+            if page_url:
+                debug_info_base["page_title"] = page_ctx.get("title")
+                debug_info_base["page_description"] = page_ctx.get("description")
+                # Add preview of page content (first 200-300 chars)
+                main_content = page_ctx.get("main_content", "")
+                if main_content:
+                    preview_length = min(300, len(main_content))
+                    debug_info_base["page_content_preview"] = main_content[:preview_length]
+                # Add error if page reading failed
+                if "error" in page_ctx:
+                    debug_info_base["page_read_error"] = page_ctx["error"]
+                    debug_info_base["has_page_content"] = False
+            else:
+                # If no page_url, ensure these fields are set appropriately
+                debug_info_base["page_url"] = None
+                debug_info_base["has_page_content"] = False
+            
             # Build response dict matching SmartAgentResponse
             result = SmartAgentResponse(
                 response=llm_text,
@@ -1094,14 +1154,7 @@ class SmartAIAgent:
                 urls_processed=urls_processed,
                 context_used=context_used,
                 timestamp=end_time.isoformat(),
-                debug_info={
-                    "session_id": agent_ctx.session_id,
-                    "page_url": agent_ctx.page_url,
-                    "has_page_content": web_content_used,
-                    "faq_count": len(agent_ctx.faq_snippets),
-                    "history_len": len(agent_ctx.chat_history),
-                    "fallback_used": fallback_used,
-                },
+                debug_info=debug_info_base,
                 error=None,
             )
             
@@ -1207,6 +1260,51 @@ class SmartAIAgent:
     async def read_url_content(self, url: str) -> Dict[str, Any]:
         """Read content from a URL"""
         return await self.web_reader.read_url_content(url)
+    
+    async def _read_page_context(self, page_url: Optional[str]) -> Dict[str, Any]:
+        """
+        Read page context from a URL using the same logic as /api/smart-agent/read-url.
+        
+        This is a helper method that wraps the existing WebContentReader to provide
+        page content information for the Smart Agent.
+        
+        Args:
+            page_url: URL to read, or None/empty string
+            
+        Returns:
+            Dict with keys: url, title, description, main_content, metadata
+            Or {"error": "..."} if error occurs
+            Or {} if page_url is None/empty
+        """
+        if not page_url or not page_url.strip():
+            return {}
+        
+        try:
+            # Use the same WebContentReader that the /api/smart-agent/read-url endpoint uses
+            content_dict = await self.web_reader.read_url_content(page_url, max_length=5000)
+            
+            # If there's an error in the response, return it
+            if "error" in content_dict:
+                return {"error": content_dict["error"]}
+            
+            # Extract and truncate main_content if needed (first 4000 chars)
+            main_content = content_dict.get("main_content", "")
+            if len(main_content) > 4000:
+                main_content = main_content[:4000] + "..."
+            
+            # Return structured dict matching the requirements
+            return {
+                "url": content_dict.get("url", page_url),
+                "title": content_dict.get("title", ""),
+                "description": content_dict.get("description", ""),
+                "main_content": main_content,
+                "metadata": content_dict.get("metadata", {}),
+            }
+            
+        except Exception as e:
+            # Handle errors defensively - log and return error dict
+            logger.exception(f"Error reading page context from {page_url}: {e}")
+            return {"error": f"Failed to read URL: {str(e)}"}
     
     def get_available_styles(self) -> Dict[str, Dict[str, str]]:
         """Get available response styles with full metadata (backward compatible format)"""
