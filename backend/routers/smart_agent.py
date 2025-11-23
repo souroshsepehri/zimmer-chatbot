@@ -639,3 +639,46 @@ async def get_smart_agent_status():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Status error: {str(e)}")
+
+
+@router.get("/smart-agent/eval", tags=["smart-agent"])
+async def eval_smart_agent():
+    """
+    Run all SmartAIAgent evaluation cases and return raw results.
+    
+    This endpoint compares SmartAIAgent against the baseline SmartChatbot
+    service on a fixed set of test cases.
+    
+    WARNING: This is for internal debugging and should be protected
+    at the nginx / auth layer. Do not expose publicly.
+    
+    Returns:
+        Dict with total count and list of results for each test case
+    """
+    try:
+        from services.smart_agent_eval import run_all_cases
+        
+        results = await run_all_cases()
+        
+        # Calculate summary statistics
+        total = len(results)
+        passed = sum(1 for r in results if r.get("score", {}).get("passed", False))
+        failed = total - passed
+        
+        # Calculate average score
+        scores = [r.get("score", {}).get("score_percentage", 0.0) for r in results if r.get("score")]
+        avg_score = sum(scores) / len(scores) if scores else 0.0
+        
+        return {
+            "total": total,
+            "passed": passed,
+            "failed": failed,
+            "average_score": round(avg_score, 2),
+            "results": results,
+        }
+    except Exception as e:
+        logger.exception(f"Error running evaluation: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Evaluation error: {str(e)}"
+        )

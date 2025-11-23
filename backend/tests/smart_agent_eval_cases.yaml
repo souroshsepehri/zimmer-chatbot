@@ -1,0 +1,116 @@
+- id: faq_1
+  type: "faq"
+  description: "Basic FAQ about Zimmer services"
+  message: "خدمات زیمر دقیقا چی هستن؟"
+  page_url: null
+  expectation:
+    must_contain:
+      - "اتوماسیون"
+      - "کسب‌وکار"
+    should_mention_faq: true
+
+- id: faq_2
+  type: "faq"
+  description: "FAQ about consultation booking"
+  message: "چطور می‌تونم مشاوره رزرو کنم؟"
+  page_url: null
+  expectation:
+    must_contain:
+      - "فرم"
+      - "مشاوره"
+    should_mention_faq: true
+
+- id: page_home_1
+  type: "page"
+  description: "Ask about homepage focus"
+  message: "این صفحه‌ی اصلی بیشتر روی چه چیزی تمرکز دارد؟"
+  page_url: "https://zimmerai.com"
+  expectation:
+    must_contain:
+      - "هوش مصنوعی"
+      - "اتوماسیون"
+    should_use_web_content: true
+
+- id: page_services_1
+  type: "page"
+  description: "Ask about services page"
+  message: "در این صفحه چه سرویس‌هایی معرفی شده‌اند؟"
+  page_url: "https://zimmerai.com/services"
+  expectation:
+    must_contain:
+      - "چت‌بات"
+      - "اتوماسیون"
+    should_use_web_content: true
+
+- id: pricing_1
+  type: "pricing"
+  description: "Pricing question, should not hallucinate exact numbers"
+  message: "قیمت سرویس‌های زیمر چقدر است؟"
+  page_url: null
+  expectation:
+    forbid_contains:
+      - "تومان"
+      - "$"
+      - "دلار"
+    must_contain:
+      - "بسته به پروژه"
+      - "فرم مشاوره"
+    should_call_to_action: true
+
+- id: pricing_2
+  type: "pricing"
+  description: "Another pricing question"
+  message: "هزینه استفاده از خدمات زیمر چقدره؟"
+  page_url: null
+  expectation:
+    forbid_contains:
+      - "تومان"
+      - "$"
+      - "دلار"
+    must_contain:
+      - "مشاوره"
+    should_call_to_action: true
+
+- id: unknown_1
+  type: "unknown"
+  description: "Ask something the system truly does not know"
+  message: "زیمر دقیقا چند مشتری فعال در ماه مهر دارد؟"
+  page_url: null
+  expectation:
+    must_contain:
+      - "مطمئن نیستم"
+    should_call_to_action: true
+
+- id: unknown_2
+  type: "unknown"
+  description: "Ask about unrelated topic"
+  message: "نظری درباره بیت کوین داری؟"
+  page_url: null
+  expectation:
+    must_contain:
+      - "زیمر"
+      - "مشاوره"
+    should_call_to_action: true
+
+- id: support_1
+  type: "support"
+  description: "Support question"
+  message: "چت‌بات کار نمی‌کنه، مشکل از کجاست؟"
+  page_url: null
+  expectation:
+    must_contain:
+      - "مشکل"
+      - "پشتیبانی"
+    should_call_to_action: true
+
+- id: sales_1
+  type: "sales"
+  description: "Sales question about consultation"
+  message: "می‌خوام برای پروژه‌م مشاوره بگیرم"
+  page_url: null
+  expectation:
+    must_contain:
+      - "مشاوره"
+      - "فرم"
+    should_call_to_action: true
+
