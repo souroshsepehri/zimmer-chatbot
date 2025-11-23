@@ -723,7 +723,7 @@ class SmartAIAgent:
             faq_snippets=[],
             site_metadata={
                 "site_name": "Zimmer",
-                "brand_tone": "حرفه‌ای، مینیمال، آرام، فارسی",
+                "brand_tone": "حرفه‌ای، مینیمال، آرام، واضح، فارسی",
                 "primary_cta": "رزرو مشاوره رایگان",
             },
         )
@@ -920,12 +920,65 @@ class SmartAIAgent:
                 }
             }
     
-    async def _call_llm(self, prompt: str) -> Optional[str]:
+    async def _call_llm(self, message: str, style: Optional[str] = None) -> Optional[str]:
         """
-        Call the LLM with the given prompt.
+        Call the LLM with a simple Persian prompt and return the assistant text.
         
-        Uses the existing LLM client (self.llm) to generate a response.
-        Returns None if LLM is not available or call fails.
+        If anything fails, return None. This is a minimal implementation that ensures
+        the LLM is actually called when OPENAI_API_KEY is set.
+        
+        Args:
+            message: User's message
+            style: Optional style hint (auto/formal/casual, etc.)
+            
+        Returns:
+            Assistant's message text, or None if unavailable/failed
+        """
+        if not self.enabled or not self.llm:
+            return None
+        
+        try:
+            # Build a simple Persian prompt
+            # Keep it minimal for now; we will add page_url/FAQ context later
+            base_instructions = (
+                "تو دستیار هوشمند وب‌سایت Zimmer هستی. "
+                "به زبان فارسی، کوتاه، واضح و حرفه‌ای جواب بده. "
+                "از حاشیه‌گویی و جملات انگیزشی خودداری کن."
+            )
+            
+            # Optionally adjust tone by style (very light)
+            if style and style not in ("auto", "", None):
+                # e.g. if style == "casual" or "formal", just note it in system hint
+                style_hint = f" لحن کلی جواب کمی {style} باشد."
+            else:
+                style_hint = ""
+            
+            prompt_text = f"{base_instructions}{style_hint}\n\nپیام کاربر:\n{message}"
+            
+            # Use the existing LangChain LLM client
+            system_message = "تو دستیار هوشمند فارسی برای وب‌سایت زیمر هستی. همیشه به فارسی پاسخ بده."
+            
+            messages = [
+                SystemMessage(content=system_message),
+                HumanMessage(content=prompt_text)
+            ]
+            
+            # Call the LLM (this is already async-compatible via LangChain)
+            response = self.llm.invoke(messages)
+            answer = response.content.strip()
+            
+            return answer if answer else None
+            
+        except Exception as e:
+            logger.exception(f"SmartAIAgent LLM call failed: {e}")
+            return None
+    
+    async def _call_llm_with_prompt(self, prompt: str) -> Optional[str]:
+        """
+        Call the LLM with a full pre-built prompt (for advanced use cases).
+        
+        This is used when we have a comprehensive prompt built from AgentContext
+        (with page content, FAQ, history, etc.).
         
         Args:
             prompt: Full prompt string to send to LLM
@@ -975,20 +1028,18 @@ class SmartAIAgent:
             Complete prompt string in Persian
         """
         site_name = agent_ctx.site_metadata.get('site_name', 'زیمر')
-        brand_tone = agent_ctx.site_metadata.get('brand_tone', 'حرفه‌ای، مینیمال، آرام، فارسی')
+        brand_tone = agent_ctx.site_metadata.get('brand_tone', 'حرفه‌ای، مینیمال، آرام، واضح، فارسی')
         primary_cta = agent_ctx.site_metadata.get('primary_cta', 'رزرو مشاوره رایگان')
         
         prompt_parts = []
         
-        # System instructions block (in Persian)
-        prompt_parts.append("=== دستورالعمل‌های سیستم ===")
-        prompt_parts.append(f"تو دستیار هوشمند وب‌سایت {site_name} هستی.")
+        # 1) System instructions (in Persian)
+        prompt_parts.append("تو دستیار هوشمند وب‌سایت Zimmer هستی.")
         prompt_parts.append("")
-        prompt_parts.append("لحن برند زیمر:")
-        prompt_parts.append("- حرفه‌ای، مینیمال، آرام، شفاف")
-        prompt_parts.append("- پاسخ‌ها کوتاه و کاربردی، بدون حاشیه‌گویی")
-        prompt_parts.append("- اگر جواب را از متن صفحه یا FAQ می‌گیری، به شکل طبیعی توضیح بده")
-        prompt_parts.append("- اگر جواب را نمی‌دانی، صادقانه بگو مطمئن نیستی و پیشنهاد بده کاربر از فرم مشاوره یا راه ارتباطی استفاده کند")
+        prompt_parts.append("لحن: حرفه‌ای، مینیمال، آرام و شفاف.")
+        prompt_parts.append("پاسخ‌ها کوتاه و کاربردی باشند و از حاشیه‌گویی و جملات انگیزشی خودداری کن.")
+        prompt_parts.append("اگر جواب را از متن صفحه یا FAQ می‌گیری، طبیعی توضیح بده، ولی جزئیات غیرضروری نگو.")
+        prompt_parts.append("اگر مطمئن نیستی، صادقانه بگو و پیشنهاد بده کاربر از فرم مشاوره یا راه ارتباطی سایت استفاده کند.")
         prompt_parts.append("")
         
         # Style adaptation (subtle, not exposed to user)
@@ -1000,59 +1051,54 @@ class SmartAIAgent:
                 prompt_parts.append("(لحن: صمیمی‌تر اما همچنان حرفه‌ای)")
             prompt_parts.append("")
         
-        # Short description of Zimmer and site from site_metadata
-        prompt_parts.append("=== درباره زیمر ===")
-        prompt_parts.append(f"سایت: {site_name}")
+        # 2) یک معرفی خیلی کوتاه از Zimmer و context سایت، از روی agent_ctx.site_metadata
+        prompt_parts.append(f"درباره {site_name}:")
         prompt_parts.append(f"لحن برند: {brand_tone}")
         prompt_parts.append(f"فراخوان به عمل: {primary_cta}")
         prompt_parts.append("")
         
-        # If page_content is not empty: add section with title/description and truncated content
+        # 3) اگر agent_ctx.page_content موجود است:
         if agent_ctx.page_content:
-            prompt_parts.append("=== خلاصه‌ای از محتوای صفحه فعلی ===")
+            prompt_parts.append("خلاصه‌ای از محتوای صفحه فعلی (ممکن است ناقص باشد):")
             if agent_ctx.page_title:
                 prompt_parts.append(f"عنوان: {agent_ctx.page_title}")
             if agent_ctx.page_description:
                 prompt_parts.append(f"توضیحات: {agent_ctx.page_description}")
-            if agent_ctx.page_url:
-                prompt_parts.append(f"آدرس: {agent_ctx.page_url}")
             prompt_parts.append("")
-            prompt_parts.append("محتوای صفحه:")
-            # Content is already truncated in _enrich_with_page_content
-            prompt_parts.append(agent_ctx.page_content)
+            # چند صد کاراکتر اول page_content
+            content_preview = agent_ctx.page_content[:500] if len(agent_ctx.page_content) > 500 else agent_ctx.page_content
+            prompt_parts.append(content_preview)
             prompt_parts.append("")
         
-        # If faq_snippets is not empty: add section with question + answer pairs
+        # 4) اگر agent_ctx.faq_snippets خالی نیست:
         if agent_ctx.faq_snippets:
-            prompt_parts.append("=== سوالات و پاسخ‌های داخلی مرتبط ===")
+            prompt_parts.append("نمونه‌ای از سوالات و پاسخ‌های داخلی مرتبط:")
             for idx, faq in enumerate(agent_ctx.faq_snippets, 1):
-                prompt_parts.append(f"\nسوال {idx}: {faq.get('question', '')}")
+                prompt_parts.append(f"سوال {idx}: {faq.get('question', '')}")
                 prompt_parts.append(f"پاسخ: {faq.get('answer', '')}")
-            prompt_parts.append("")
+                prompt_parts.append("")
         
-        # Optionally a brief summary of recent history (last few turns) in 1-3 lines, not raw JSON
+        # 5) خلاصه کوتاهی از تاریخچه‌ی مکالمه (اگر chat_history خالی نبود)، در 1–3 خط، نه به‌صورت JSON خام
         if agent_ctx.chat_history:
-            prompt_parts.append("=== خلاصه تاریخچه گفتگو ===")
-            # Take last 3-5 messages and summarize briefly
-            recent_history = agent_ctx.chat_history[-5:]
-            history_summary = []
+            recent_history = agent_ctx.chat_history[-5:]  # Last 5 messages
+            history_lines = []
             for msg in recent_history:
                 role = msg.get('role', 'user')
                 content = msg.get('content', '')
                 # Truncate long messages
-                if len(content) > 150:
-                    content = content[:150] + "..."
+                if len(content) > 100:
+                    content = content[:100] + "..."
                 role_label = "کاربر" if role == "user" else "دستیار"
-                history_summary.append(f"{role_label}: {content}")
+                history_lines.append(f"{role_label}: {content}")
             # Join in 1-3 lines
-            if len(history_summary) <= 3:
-                prompt_parts.append(" | ".join(history_summary))
+            if len(history_lines) <= 3:
+                prompt_parts.append("تاریخچه گفتگو: " + " | ".join(history_lines))
             else:
-                prompt_parts.append(" | ".join(history_summary[:3]) + " ...")
+                prompt_parts.append("تاریخچه گفتگو: " + " | ".join(history_lines[:3]) + " ...")
             prompt_parts.append("")
         
-        # Finally, clearly mark the user message
-        prompt_parts.append("=== پیام کاربر ===")
+        # 6) در انتها:
+        prompt_parts.append("پیام فعلی کاربر:")
         prompt_parts.append(agent_ctx.user_message)
         prompt_parts.append("")
         prompt_parts.append("حالا با استفاده از تمام اطلاعات بالا، به سوال کاربر پاسخ بده:")
@@ -1095,20 +1141,6 @@ class SmartAIAgent:
             # Normalize context to a dict
             raw_ctx = req.context or {}
             
-            # Read page context even in fallback mode (for debug_info)
-            page_url = raw_ctx.get("page_url")
-            page_ctx = await self._read_page_context(page_url)
-            
-            # Get FAQ matches (works regardless of OpenAI availability)
-            faq_matches = []
-            faq_error = None
-            try:
-                faq_matches = await self._get_faq_matches(req.message, limit=5)
-            except Exception as e:
-                logger.warning(f"Error retrieving FAQ matches: {e}")
-                faq_error = str(e)
-                faq_matches = []
-            
             # Build AgentContext using helper
             agent_ctx = self._build_agent_context(req.message, raw_ctx)
             
@@ -1116,28 +1148,44 @@ class SmartAIAgent:
             await self._enrich_with_page_content(agent_ctx)
             await self._enrich_with_faq(agent_ctx)
             
-            # Default values for response
+            # Read page context for debug_info (separate from enrichment)
+            page_url = raw_ctx.get("page_url")
+            page_ctx = await self._read_page_context(page_url)
+            
+            # Try LLM first if enabled (minimal call with just message and style)
             llm_text: Optional[str] = None
-            fallback_used = False
-            intent = None
-            confidence = None
-            source = "smart_agent_llm"
-            
-            # Try LLM if enabled
             if self.enabled:
-                prompt = self._build_prompt(agent_ctx, req.style)
-                llm_text = await self._call_llm(prompt)
+                # First try simple LLM call with just message and style
+                llm_text = await self._call_llm(message=req.message, style=req.style)
+                
+                # If simple call fails, try with full context (page content, FAQ, etc.)
+                if not llm_text and (agent_ctx.page_content or agent_ctx.faq_snippets):
+                    try:
+                        prompt = self._build_prompt(agent_ctx, req.style)
+                        llm_text = await self._call_llm_with_prompt(prompt)
+                    except Exception as e:
+                        logger.warning(f"Failed to call LLM with full context: {e}")
+                        llm_text = None
             
-            # If LLM is unavailable or failed, use stub
-            if not llm_text:
-                fallback_used = True
+            # Determine response source and fallback status
+            if llm_text:
+                # LLM path - successful
+                answer_text = llm_text
+                intent = None
+                confidence = None
+                source = "smart_agent_llm"
+                agent_type = "llm"
+                fallback_used = False
+            else:
+                # Fallback to stub
                 core = await self._generate_response(req.message, user_id=raw_ctx.get("session_id"))
                 answer_text = core.get("answer", "")
                 intent = core.get("intent")
                 confidence = core.get("confidence")
-                source = core.get("metadata", {}).get("agent_type", "stub")
-            else:
-                answer_text = llm_text
+                # Keep compatibility with old stub debug info if present
+                source = core.get("source", "smart_agent_stub")
+                agent_type = core.get("metadata", {}).get("agent_type", "stub")
+                fallback_used = True if self.enabled else False
             
             end_time = datetime.now(timezone.utc)
             response_time = (end_time - start_time).total_seconds()
@@ -1156,23 +1204,31 @@ class SmartAIAgent:
             # Build debug_info with all context details
             has_page_content = bool(page_ctx.get("main_content")) and "error" not in page_ctx
             debug_info_base = {
+                "intent": intent,
+                "confidence": confidence,
+                "source": source,
+                "agent_type": agent_type,
+                "fallback_used": fallback_used,
                 "session_id": agent_ctx.session_id,
                 "page_url": agent_ctx.page_url,
                 "has_page_content": has_page_content,
                 "page_title": agent_ctx.page_title,
                 "faq_count": len(agent_ctx.faq_snippets),
                 "history_len": len(agent_ctx.chat_history),
-                "intent": intent,
-                "confidence": confidence,
-                "source": source,
-                "fallback_used": fallback_used,
             }
             
-            # Add FAQ matches to debug_info
-            if faq_matches:
-                debug_info_base["faq_matches"] = faq_matches
-            if faq_error:
-                debug_info_base["faq_error"] = faq_error
+            # Add FAQ matches to debug_info (from agent_ctx.faq_snippets)
+            if agent_ctx.faq_snippets:
+                debug_info_base["faq_matches"] = [
+                    {
+                        "id": faq.get("id"),
+                        "question": faq.get("question", ""),
+                        "answer": faq.get("answer", ""),
+                        "score": faq.get("score", 0.0),
+                        "category": faq.get("category"),
+                    }
+                    for faq in agent_ctx.faq_snippets
+                ]
             
             # Add page details to debug_info
             if page_url:
