@@ -5,60 +5,51 @@ Smart Agent API endpoints
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import HTMLResponse
 from typing import Optional, Dict, Any
-from pydantic import BaseModel
 import asyncio
 from datetime import datetime
 
 from services.smart_agent import smart_agent
 from core.db import get_db
 from sqlalchemy.orm import Session
+from schemas.smart_agent import (
+    SmartAgentRequest,
+    SmartAgentResponse,
+    URLReadRequest,
+    URLReadResponse,
+    StyleInfo,
+    AVAILABLE_STYLES,
+    STYLE_DEFINITIONS,
+    ResponseStyle
+)
+from typing import List
 
 router = APIRouter()
-
-class SmartAgentRequest(BaseModel):
-    message: str
-    style: Optional[str] = "auto"
-    context: Optional[Dict[str, Any]] = None
-
-class SmartAgentResponse(BaseModel):
-    response: str
-    style: str
-    response_time: float
-    web_content_used: bool
-    urls_processed: list
-    context_used: bool
-    timestamp: str
-    debug_info: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-
-class URLReadRequest(BaseModel):
-    url: str
-    max_length: Optional[int] = 5000
-
-class URLReadResponse(BaseModel):
-    url: str
-    title: str
-    description: str
-    main_content: str
-    links: list
-    images: list
-    metadata: dict
-    timestamp: str
-    error: Optional[str] = None
 
 @router.post("/smart-agent/chat", response_model=SmartAgentResponse)
 async def smart_agent_chat(
     request: SmartAgentRequest,
     db: Session = Depends(get_db)
 ):
-    """Get smart AI response with multi-style capabilities and web content reading"""
+    """
+    Get smart AI response with multi-style capabilities and web content reading.
+    
+    The style parameter from SmartAgentRequest can be:
+    - "auto" (default): Automatically selects the most appropriate style based on the message
+    - Any valid style ID from /api/smart-agent/styles endpoint: formal, friendly, brief, detailed, explainer, marketing
+    
+    The response includes the effective style used (after auto-selection if style was "auto").
+    """
     try:
+        # Pass the style directly - the service will normalize and validate it
+        # If style is None or invalid, it will default to "auto" in the service
         result = await smart_agent.get_smart_response(
             message=request.message,
-            style=request.style,
+            style=request.style,  # Pass the style from request (may be None, "auto", or a specific style)
             context=request.context
         )
         
+        # The result already includes the effective style (after normalization and auto-selection)
+        # This ensures the response shows the actual style used, not just the input
         return SmartAgentResponse(**result)
         
     except Exception as e:
@@ -91,16 +82,33 @@ async def read_url_content(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"URL reading error: {str(e)}")
 
-@router.get("/smart-agent/styles")
+@router.get(
+    "/smart-agent/styles",
+    tags=["smart-agent"],
+    summary="Get Available Styles",
+    response_model=List[StyleInfo],
+    response_description="List of available response styles with Persian labels and descriptions"
+)
 async def get_available_styles():
-    """Get available response styles"""
+    """
+    Get available response styles for the Smart Agent.
+    
+    This is used by the frontend to build a style selector.
+    
+    Returns a list of style objects, each containing:
+    - **key**: The style identifier (e.g., "auto", "formal", "friendly")
+    - **label**: The Persian label for the style (e.g., "خودکار", "رسمی و حرفه‌ای")
+    - **description**: The Persian description explaining when to use this style
+    """
     try:
-        styles = smart_agent.get_available_styles()
-        return {
-            "styles": styles,
-            "default": "auto",
-            "total": len(styles)
-        }
+        return [
+            {
+                "key": info["key"],
+                "label": info["label"],
+                "description": info["description"],
+            }
+            for info in AVAILABLE_STYLES.values()
+        ]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting styles: {str(e)}")
 

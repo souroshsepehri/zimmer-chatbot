@@ -41,6 +41,12 @@ from langchain_core.callbacks import StreamingStdOutCallbackHandler
 from core.config import settings
 from .debugger import debugger
 from .api_integration import api_integration
+from schemas.smart_agent import (
+    AVAILABLE_STYLES,
+    STYLE_DEFINITIONS,
+    STYLE_INSTRUCTIONS,
+    ResponseStyle
+)
 
 logger = logging.getLogger(__name__)
 
@@ -256,16 +262,12 @@ class SmartAIAgent:
         self.memory = ConversationBufferWindowMemory(k=10)
         self.web_reader = WebContentReader()
         
-        # Response styles
+        # Response styles - use standardized definitions from schema
+        # Map style keys to their instructions for easy lookup
         self.response_styles = {
-            "formal": "Provide a formal, professional response with proper structure and detailed explanations.",
-            "casual": "Respond in a casual, friendly manner as if talking to a friend.",
-            "technical": "Give a technical, detailed response with specific information and examples.",
-            "simple": "Provide a simple, easy-to-understand response suitable for beginners.",
-            "creative": "Respond in a creative, engaging way with examples and analogies.",
-            "persian": "Respond in Persian (Farsi) with proper Persian language structure and cultural context.",
-            "analytical": "Provide an analytical response with pros/cons, comparisons, and logical reasoning.",
-            "empathetic": "Respond with empathy and understanding, acknowledging the user's feelings."
+            style.value: STYLE_INSTRUCTIONS.get(style.value, "Provide a helpful response.")
+            for style in ResponseStyle
+            if style != ResponseStyle.AUTO  # Exclude auto from instruction mapping
         }
         
         # Initialize tools
@@ -384,31 +386,30 @@ class SmartAIAgent:
             return content[:500] + "..." if len(content) > 500 else content
     
     def _style_selector_tool(self, message: str) -> str:
-        """Tool function for selecting response style"""
+        """Tool function for selecting response style based on message content"""
         try:
             # Analyze message to determine appropriate style
             message_lower = message.lower()
             
-            if any(word in message_lower for word in ['formal', 'professional', 'business']):
-                return "formal"
-            elif any(word in message_lower for word in ['casual', 'friendly', 'hey', 'hi']):
-                return "casual"
-            elif any(word in message_lower for word in ['technical', 'how to', 'explain', 'details']):
-                return "technical"
-            elif any(word in message_lower for word in ['simple', 'easy', 'beginner']):
-                return "simple"
-            elif any(word in message_lower for word in ['creative', 'interesting', 'fun']):
-                return "creative"
-            elif any(word in message_lower for word in ['فارسی', 'persian', 'فارسی']):
-                return "persian"
-            elif any(word in message_lower for word in ['analyze', 'compare', 'pros', 'cons']):
-                return "analytical"
-            elif any(word in message_lower for word in ['help', 'problem', 'issue', 'feel']):
-                return "empathetic"
+            # Check for explicit style requests
+            if any(word in message_lower for word in ['formal', 'professional', 'business', 'official', 'رسمی']):
+                return ResponseStyle.FORMAL.value
+            elif any(word in message_lower for word in ['friendly', 'casual', 'hey', 'hi', 'hello', 'صمیمی', 'محاوره']):
+                return ResponseStyle.FRIENDLY.value
+            elif any(word in message_lower for word in ['brief', 'short', 'quick', 'summary', 'خلاصه', 'کوتاه']):
+                return ResponseStyle.BRIEF.value
+            elif any(word in message_lower for word in ['detailed', 'comprehensive', 'thorough', 'complete', 'کامل', 'توضیحی']):
+                return ResponseStyle.DETAILED.value
+            elif any(word in message_lower for word in ['explain', 'step', 'how to', 'tutorial', 'آموزش', 'مرحله', 'گام']):
+                return ResponseStyle.EXPLAINER.value
+            elif any(word in message_lower for word in ['marketing', 'promote', 'sell', 'advertise', 'مارکتینگ', 'تبلیغ', 'ترغیب']):
+                return ResponseStyle.MARKETING.value
             else:
-                return "casual"  # Default style
+                # Default to friendly for casual interactions
+                return ResponseStyle.FRIENDLY.value
         except Exception as e:
-            return "casual"
+            logger.warning(f"Error in style selection: {e}")
+            return ResponseStyle.FRIENDLY.value
     
     def _api_news_tool(self, query: str) -> str:
         """Tool function for getting news"""
@@ -508,8 +509,11 @@ class SmartAIAgent:
         start_time = time.time()
         
         try:
+            # Normalize and validate style
+            style = self._normalize_and_validate_style(style)
+            
             # Auto-detect style if not specified
-            if style == "auto":
+            if style == ResponseStyle.AUTO.value:
                 style = self._style_selector_tool(message)
             
             # Check if message contains URLs
@@ -625,27 +629,37 @@ class SmartAIAgent:
             }
     
     def _create_system_prompt(self, style: str, context: Dict[str, Any] = None) -> str:
-        """Create system prompt based on style and context"""
-        base_prompt = f"""You are an advanced AI assistant with the following capabilities:
-1. You can read and analyze content from websites and URLs
-2. You can respond in multiple styles and languages
-3. You have access to web content and can provide up-to-date information
-4. You can understand context and provide relevant responses
+        """Create system prompt based on style and context (Persian-first)"""
+        # Convert style string to ResponseStyle enum
+        try:
+            style_enum = ResponseStyle(style)
+        except ValueError:
+            style_enum = ResponseStyle.AUTO
+        
+        # Get Farsi style instructions
+        style_instruction = self._get_style_instructions(style_enum)
+        
+        # Base prompt in Persian (Persian-first assistant)
+        base_prompt = """تو یک دستیار هوش مصنوعی فارسی برای زیمر هستی. قابلیت‌های تو شامل موارد زیر است:
+1. می‌توانی محتوای وب‌سایت‌ها و URL ها را بخوانی و تحلیل کنی
+2. می‌توانی به سبک‌ها و زبان‌های مختلف پاسخ دهی
+3. به محتوای وب دسترسی داری و می‌توانی اطلاعات به‌روز ارائه دهی
+4. می‌توانی زمینه را درک کنی و پاسخ‌های مرتبط بدهی
 
-Current response style: {style}
-Style instruction: {self.response_styles.get(style, 'Provide a helpful response.')}
-
-Guidelines:
-- Always be helpful and accurate
-- If you reference web content, mention the source
-- Adapt your response to the specified style
-- Provide detailed information when appropriate
-- If you don't know something, say so honestly
-- Use examples and analogies when helpful
+راهنمایی‌های کلی:
+- همیشه مفید و دقیق باش
+- اگر به محتوای وب اشاره می‌کنی، منبع را ذکر کن
+- اگر چیزی را نمی‌دانی، صادقانه بگو
+- از مثال‌ها و تشبیهات استفاده کن وقتی مفید است
 """
         
+        # Add style instruction if provided
+        if style_instruction:
+            base_prompt += f"\n\nلحن پاسخ:\n{style_instruction}\n"
+        
+        # Add context if provided
         if context:
-            base_prompt += f"\nAdditional context: {json.dumps(context, ensure_ascii=False)}"
+            base_prompt += f"\n\nزمینه اضافی: {json.dumps(context, ensure_ascii=False)}"
         
         return base_prompt
     
@@ -676,15 +690,64 @@ Guidelines:
         """Read content from a URL"""
         return await self.web_reader.read_url_content(url)
     
-    def get_available_styles(self) -> Dict[str, str]:
-        """Get available response styles"""
-        return self.response_styles
+    def get_available_styles(self) -> Dict[str, Dict[str, str]]:
+        """Get available response styles with full metadata (backward compatible format)"""
+        return STYLE_DEFINITIONS
+    
+    def get_available_styles_dict(self) -> Dict[ResponseStyle, Dict[str, str]]:
+        """Get available response styles in the new TypedDict format"""
+        return AVAILABLE_STYLES
+    
+    def get_style_instruction(self, style: str) -> str:
+        """Get the instruction prompt for a specific style (English, for backward compatibility)"""
+        if style == "auto":
+            return STYLE_INSTRUCTIONS.get("auto", "Analyze the user's message and choose the most appropriate response style automatically.")
+        # Get instruction from STYLE_INSTRUCTIONS
+        return STYLE_INSTRUCTIONS.get(style, STYLE_INSTRUCTIONS.get("friendly", "Provide a helpful response."))
+    
+    def _normalize_and_validate_style(self, style: Optional[str]) -> str:
+        """Normalize and validate style, defaulting to AUTO if invalid"""
+        if style is None:
+            return ResponseStyle.AUTO.value
+        
+        style_lower = style.lower().strip()
+        
+        # Check if style is a valid ResponseStyle enum value
+        try:
+            style_enum = ResponseStyle(style_lower)
+            return style_enum.value
+        except ValueError:
+            # Invalid style, fallback to AUTO
+            logger.warning(f"Invalid style '{style}' provided, defaulting to 'auto'")
+            return ResponseStyle.AUTO.value
+    
+    def _get_style_instructions(self, style: ResponseStyle) -> str:
+        """
+        Get Farsi instructions for the LLM based on the response style.
+        Returns empty string for AUTO style.
+        """
+        style_instructions_map = {
+            ResponseStyle.AUTO: "بسته به سوال و زمینه کاربر، مناسب‌ترین لحن را انتخاب کن.",
+            ResponseStyle.FORMAL: "پاسخ را با لحن رسمی، محترمانه و حرفه‌ای بنویس. از جملات کامل و معیار استفاده کن.",
+            ResponseStyle.FRIENDLY: "پاسخ را با لحن صمیمی، شبیه چت اینستاگرامی اما مؤدب و حرفه‌ای بنویس. از عبارت‌های محاوره‌ای ملایم استفاده کن.",
+            ResponseStyle.BRIEF: "پاسخ را خیلی خلاصه و مستقیم بنویس. حداکثر ۲–۳ جمله، بدون حاشیه.",
+            ResponseStyle.DETAILED: "پاسخ را کامل و توضیحی بنویس، با مثال‌ها و جزئیات لازم، اما منظم و قابل‌خواندن.",
+            ResponseStyle.EXPLAINER: "پاسخ را به صورت مرحله‌به‌مرحله و آموزشی بنویس. از شماره‌گذاری مراحل استفاده کن.",
+            ResponseStyle.MARKETING: "پاسخ را با لحن مارکتینگی و ترغیب‌کننده بنویس، اما صادق و بدون اغراق. تمرکز روی مزایا برای کاربر.",
+        }
+        
+        return style_instructions_map.get(style, "")
     
     def set_response_style(self, style: str) -> bool:
         """Set default response style"""
-        if style in self.response_styles:
-            self.default_style = style
-            return True
+        # Check if style is a valid ResponseStyle enum value
+        try:
+            style_enum = ResponseStyle(style)
+            if style_enum in AVAILABLE_STYLES:
+                self.default_style = style
+                return True
+        except ValueError:
+            pass
         return False
     
     def _create_fallback_response(self, message: str, style: str, web_content: Dict[str, Any], context: Dict[str, Any] = None) -> str:
@@ -696,8 +759,11 @@ Guidelines:
         
         # Check for common patterns and provide appropriate responses
         if any(word in message_lower for word in ['hello', 'hi', 'hey', 'سلام']):
-            if style == "persian":
+            # Use friendly style for greetings
+            if style == ResponseStyle.FRIENDLY.value:
                 return "سلام! من یک دستیار هوشمند هستم. متأسفانه در حال حاضر قابلیت‌های پیشرفته AI در دسترس نیست، اما می‌توانم به شما در خواندن محتوای وب و استفاده از API های مختلف کمک کنم."
+            elif style == ResponseStyle.FORMAL.value:
+                return "سلام. من یک دستیار هوشمند هستم. در حال حاضر در حالت محدود عمل می‌کنم (کلید API OpenAI تنظیم نشده است)، اما می‌توانم در خواندن محتوای وب و استفاده از API های مختلف به شما کمک کنم."
             else:
                 return f"Hello! I'm your Smart AI Agent. I'm currently running in limited mode (OpenAI API key not set), but I can still help you with web content reading and API integrations. How can I assist you today?"
         
@@ -731,9 +797,13 @@ Guidelines:
                 return "I found URLs in your message but couldn't read their content. Please check if the URLs are accessible."
         
         else:
-            # Generic fallback response
-            if style == "persian":
-                return "متأسفانه در حال حاضر قابلیت‌های پیشرفته AI در دسترس نیست. لطفاً API key مربوط به OpenAI را تنظیم کنید تا بتوانم پاسخ‌های هوشمندانه‌تری ارائه دهم. در عین حال، می‌توانم در خواندن محتوای وب و استفاده از API های مختلف به شما کمک کنم."
+            # Generic fallback response - adapt based on style
+            if style == ResponseStyle.BRIEF.value:
+                return "در حال حاضر در حالت محدود هستم. لطفاً API key OpenAI را تنظیم کنید. می‌توانم در خواندن وب و API ها کمک کنم."
+            elif style == ResponseStyle.DETAILED.value:
+                return "متأسفانه در حال حاضر قابلیت‌های پیشرفته AI در دسترس نیست. لطفاً API key مربوط به OpenAI را تنظیم کنید تا بتوانم پاسخ‌های هوشمندانه‌تری ارائه دهم. در عین حال، می‌توانم در خواندن محتوای وب و استفاده از API های مختلف به شما کمک کنم:\n\n• خواندن و تحلیل محتوای وب\n• اطلاعات اخبار و آب و هوا\n• خدمات ترجمه\n• جستجو در ویکی‌پدیا\n• نقل قول‌های الهام‌بخش\n• و بیشتر!\n\nچه کاری می‌خواهید امتحان کنید؟"
+            elif style == ResponseStyle.FRIENDLY.value:
+                return "سلام! متأسفانه الان در حالت محدود کار می‌کنم چون API key OpenAI تنظیم نشده. برای پاسخ‌های کامل‌تر لطفاً API key رو تنظیم کن. ولی هنوز می‌تونم در خواندن وب و استفاده از API ها کمکت کنم!"
             else:
                 return "I'm currently running in limited mode because the OpenAI API key is not set. To get full AI-powered responses, please set up your OpenAI API key. However, I can still help you with:\n\n• Web content reading and analysis\n• News and weather information\n• Translation services\n• Wikipedia searches\n• Inspirational quotes\n• And more!\n\nWhat would you like to try?"
 
