@@ -5,6 +5,11 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const message = body?.message as string | undefined;
     const style = (body?.style as string | undefined) || "auto";
+    const context = body?.context as {
+      session_id?: string;
+      page_url?: string;
+      history?: Array<{ role: string; content: string }>;
+    } | undefined;
 
     if (!message || typeof message !== "string" || !message.trim()) {
       return NextResponse.json(
@@ -21,12 +26,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Build payload for SmartAIAgent endpoint
+    const payload: {
+      message: string;
+      style: string;
+      context?: {
+        session_id?: string;
+        page_url?: string;
+        history?: Array<{ role: string; content: string }>;
+      };
+    } = {
+      message,
+      style: "auto", // Always use "auto" - style selection is not exposed to users
+    };
+
+    // Add context if provided
+    if (context) {
+      payload.context = {
+        session_id: context.session_id,
+        page_url: context.page_url,
+        history: context.history || [],
+      };
+    }
+
     const res = await fetch(`${base}/api/smart-agent/chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ message, style }),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
@@ -38,6 +66,17 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json();
+
+    // Check if response has an error field
+    if (data.error) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "در حال حاضر دستیار سایت با مشکل فنی روبه‌رو است. لطفاً چند دقیقه دیگر دوباره تلاش کنید.",
+        },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json(
       {
@@ -51,7 +90,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("Chatbot proxy error:", err);
     return NextResponse.json(
-      { success: false, error: "خطا در ارتباط با چت‌بات." },
+      { success: false, error: "در حال حاضر دستیار سایت با مشکل فنی روبه‌رو است. لطفاً چند دقیقه دیگر دوباره تلاش کنید." },
       { status: 500 }
     );
   }

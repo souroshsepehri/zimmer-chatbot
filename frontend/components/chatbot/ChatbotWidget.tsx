@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useZimmerChatSessionId } from "@/hooks/useZimmerChatSessionId";
 
 type Role = "user" | "assistant";
 
@@ -8,25 +9,16 @@ interface ChatMessage {
   id: string;
   role: Role;
   text: string;
-  style?: string;
 }
-
-const styles = [
-  { value: "auto", label: "خودکار" },
-  { value: "formal", label: "رسمی" },
-  { value: "friendly", label: "صمیمی" },
-  { value: "marketing", label: "مارکتینگ" },
-  { value: "support", label: "پشتیبانی" },
-];
 
 export function ChatbotWidget() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [style, setStyle] = useState<string>("auto");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const sessionId = useZimmerChatSessionId();
 
   // Scroll to bottom when new message is added
   useEffect(() => {
@@ -38,13 +30,12 @@ export function ChatbotWidget() {
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = input.trim();
-    if (!trimmed || loading) return;
+    if (!trimmed || loading || !sessionId) return;
 
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       role: "user",
       text: trimmed,
-      style,
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -53,12 +44,31 @@ export function ChatbotWidget() {
     setLoading(true);
 
     try {
+      // Build history array from previous messages (last 10 exchanges)
+      const history = messages
+        .slice(-10) // Last 10 messages
+        .map((msg) => ({
+          role: msg.role === "user" ? "user" : "assistant",
+          content: msg.text,
+        }));
+
+      // Build request payload
+      const payload = {
+        message: trimmed,
+        style: "auto", // Always use "auto" - user cannot choose
+        context: {
+          session_id: sessionId,
+          page_url: typeof window !== "undefined" ? window.location.href : undefined,
+          history: history,
+        },
+      };
+
       const res = await fetch("/api/chatbot", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ message: trimmed, style }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -67,17 +77,22 @@ export function ChatbotWidget() {
         throw new Error(data.error || "خطا در پاسخ چت‌بات");
       }
 
+      // Check if response has an error field
+      if (data.raw?.error) {
+        throw new Error("در حال حاضر دستیار سایت با مشکل فنی روبه‌رو است. لطفاً چند دقیقه دیگر دوباره تلاش کنید.");
+      }
+
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: "assistant",
         text: data.response,
-        style: data.style,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "خطای ناشناخته رخ داد.");
+      // Show polite Persian error message
+      setError(err.message || "در حال حاضر دستیار سایت با مشکل فنی روبه‌رو است. لطفاً چند دقیقه دیگر دوباره تلاش کنید.");
     } finally {
       setLoading(false);
     }
@@ -111,18 +126,6 @@ export function ChatbotWidget() {
                 سوالت رو بپرس، من جواب می‌دم
               </span>
             </div>
-
-            <select
-              value={style}
-              onChange={(e) => setStyle(e.target.value)}
-              className="rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-800 shadow-sm focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
-            >
-              {styles.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
           </div>
 
           {/* Messages area */}
@@ -146,11 +149,6 @@ export function ChatbotWidget() {
                   }
                 >
                   <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
-                  {msg.style && msg.style !== "auto" && (
-                    <span className="mt-1 block text-[10px] opacity-70">
-                      لحن: {styles.find((s) => s.value === msg.style)?.label || msg.style}
-                    </span>
-                  )}
                 </div>
               </div>
             ))}
@@ -186,11 +184,11 @@ export function ChatbotWidget() {
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="پیامت رو اینجا بنویس..."
                 className="flex-1 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50 dark:placeholder-neutral-400"
-                disabled={loading}
+                disabled={loading || !sessionId}
               />
               <button
                 type="submit"
-                disabled={loading || !input.trim()}
+                disabled={loading || !input.trim() || !sessionId}
                 className="rounded-xl bg-purple-600 px-3 py-2 text-xs font-medium text-white shadow-sm hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60 transition-colors duration-200"
               >
                 ارسال
