@@ -1152,13 +1152,21 @@ class SmartAIAgent:
             page_url = raw_ctx.get("page_url")
             page_ctx = await self._read_page_context(page_url)
             
-            # Try LLM first if enabled (minimal call with just message and style)
+            # CRITICAL: When self.enabled is True, we MUST call the LLM.
+            # Only use the stub (_generate_response) when:
+            #   - self.enabled is False, OR
+            #   - LLM call returns None/empty/fails
             llm_text: Optional[str] = None
+            
             if self.enabled:
-                # First try simple LLM call with just message and style
-                llm_text = await self._call_llm(message=req.message, style=req.style)
+                # PRIMARY PATH: Call LLM when enabled - this MUST execute when self.enabled is True
+                try:
+                    llm_text = await self._call_llm(message=req.message, style=req.style)
+                except Exception as e:
+                    logger.warning(f"LLM call failed: {e}")
+                    llm_text = None
                 
-                # If simple call fails, try with full context (page content, FAQ, etc.)
+                # If simple call fails but we have context (page content, FAQ, etc.), try with full context
                 if not llm_text and (agent_ctx.page_content or agent_ctx.faq_snippets):
                     try:
                         prompt = self._build_prompt(agent_ctx, req.style)
@@ -1168,16 +1176,20 @@ class SmartAIAgent:
                         llm_text = None
             
             # Determine response source and fallback status
-            if llm_text:
-                # LLM path - successful
-                answer_text = llm_text
+            # Check if we have a valid LLM response (non-empty string)
+            if llm_text and llm_text.strip():
+                # LLM path - successful: use LLM response
+                # This path is taken when self.enabled is True AND LLM call succeeded
+                answer_text = llm_text.strip()
                 intent = None
                 confidence = None
                 source = "smart_agent_llm"
                 agent_type = "llm"
                 fallback_used = False
             else:
-                # Fallback to stub
+                # Fallback to stub: only used when:
+                # - self.enabled is False (expected path, not a fallback), OR
+                # - LLM call returned None/empty/failed (actual fallback)
                 core = await self._generate_response(req.message, user_id=raw_ctx.get("session_id"))
                 answer_text = core.get("answer", "")
                 intent = core.get("intent")
@@ -1185,6 +1197,8 @@ class SmartAIAgent:
                 # Keep compatibility with old stub debug info if present
                 source = core.get("source", "smart_agent_stub")
                 agent_type = core.get("metadata", {}).get("agent_type", "stub")
+                # Set fallback_used to True only if self.enabled was True but LLM still failed
+                # If self.enabled is False, fallback_used should be False (not a fallback, it's the expected path)
                 fallback_used = True if self.enabled else False
             
             end_time = datetime.now(timezone.utc)
