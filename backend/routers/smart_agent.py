@@ -41,15 +41,12 @@ async def smart_agent_chat(
     """
     try:
         # Force style to "auto" - do not expose style control to frontend
-        result = await smart_agent.get_smart_response(
-            message=request.message,
-            style="auto",  # Always use auto style
-            context=request.context,
-            page_url=request.page_url,
-            db=db
-        )
+        request.style = "auto"
         
-        return SmartAgentResponse(**result)
+        # Call get_smart_response with SmartAgentRequest directly
+        result = await smart_agent.get_smart_response(request, db)
+        
+        return result
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Smart agent error: {str(e)}")

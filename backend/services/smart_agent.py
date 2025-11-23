@@ -51,6 +51,10 @@ from schemas.smart_agent import (
     ResponseStyle
 )
 from sqlalchemy.orm import Session
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from schemas.smart_agent import SmartAgentRequest, SmartAgentResponse
 
 logger = logging.getLogger(__name__)
 
@@ -747,34 +751,47 @@ class SmartAIAgent:
     
     async def get_smart_response(
         self,
-        message: str,
-        style: str = "auto",
-        context: Dict[str, Any] = None,
-        page_url: str | None = None,
+        request: 'SmartAgentRequest',
         db: Session | None = None
-    ) -> Dict[str, Any]:
+    ) -> 'SmartAgentResponse':
         """
-        Get smart AI response using the Prompt Orchestrator pattern.
+        Main public entrypoint for SmartAIAgent flow.
+        
+        This method is the primary interface for the Smart Agent endpoint.
+        It uses the Prompt Orchestrator pattern (AgentContext + get_page_context + build_prompt)
+        to combine FAQ matches, page context, chat history, and brand tone into a comprehensive
+        prompt for the LLM.
         
         Responsibilities:
-        - Gathers all context (FAQ, page, chat history, site metadata)
-        - Builds AgentContext
+        - Extracts fields from SmartAgentRequest
+        - Builds AgentContext using the orchestrator design
+        - Calls get_page_context if page_url is provided
         - Calls build_prompt to create comprehensive prompt
-        - Sends to LLM and returns formatted response
+        - Sends to LLM and returns SmartAgentResponse
         
         Args:
-            message: User's message
-            style: Response style (auto-detected, not exposed to frontend)
-            context: Optional additional context dict
-            page_url: URL of current page user is on
-            db: Database session for FAQ retrieval
+            request: SmartAgentRequest containing message, style, context, page_url
+            db: Database session for FAQ retrieval (optional)
             
         Returns:
-            Dict with response, metadata, and debug info
+            SmartAgentResponse with response, metadata, and debug info
         """
         start_time = time.time()
         
         try:
+            # Import here to avoid circular imports
+            from schemas.smart_agent import SmartAgentRequest, SmartAgentResponse
+            
+            # Extract fields from SmartAgentRequest
+            message = request.message
+            style = request.style or "auto"
+            context = request.context or {}
+            
+            # Extract page_url: prefer from context, fallback to request.page_url
+            page_url = context.get("page_url") if context else None
+            if not page_url:
+                page_url = request.page_url
+            
             # Normalize and validate style (always auto for website assistant)
             style = self._normalize_and_validate_style(style)
             if style == ResponseStyle.AUTO.value:
@@ -786,15 +803,16 @@ class SmartAIAgent:
             if db:
                 faq_matches = self._get_faq_matches(message, db)
             
-            # 2. Page context (synchronous now)
+            # 2. Page context (synchronous)
             page_context = None
+            urls_processed = []
             if page_url:
                 page_context = self.get_page_context(page_url)
+                if page_context:
+                    urls_processed = [page_url]
             
-            # 3. Chat history (empty for now, can be extended to retrieve from DB/session)
-            chat_history = []
-            # TODO: Retrieve chat history from database/session if needed
-            # Example: chat_history = self._get_chat_history(session_id, db)
+            # 3. Chat history from context
+            chat_history = context.get("history", []) if context else []
             
             # 4. Site metadata (hardcoded for Zimmer)
             site_metadata = {
@@ -803,7 +821,7 @@ class SmartAIAgent:
                 "primary_cta": "رزرو مشاوره رایگان"
             }
             
-            # Build AgentContext
+            # Build AgentContext using the orchestrator design
             agent_context = AgentContext(
                 user_message=message,
                 chat_history=chat_history,
@@ -823,30 +841,25 @@ class SmartAIAgent:
                 else:
                     fallback_response = "متأسفانه در حال حاضر قابلیت‌های پیشرفته AI در دسترس نیست. لطفاً از فرم تماس استفاده کنید."
                 
-                result = {
-                    "response": fallback_response,
-                    "style": style,
-                    "response_time": response_time,
-                    "web_content_used": bool(page_context),
-                    "urls_processed": [page_url] if page_url and page_context else [],
-                    "context_used": bool(faq_matches),
-                    "timestamp": datetime.now().isoformat(),
-                    "debug_info": {
+                return SmartAgentResponse(
+                    response=fallback_response,
+                    style=style,
+                    response_time=response_time,
+                    web_content_used=bool(page_context),
+                    urls_processed=urls_processed,
+                    context_used=bool(faq_matches or page_context or chat_history),
+                    timestamp=datetime.now().isoformat(),
+                    debug_info={
+                        "has_page_context": bool(page_context),
+                        "faq_matches_count": len(faq_matches),
+                        "history_len": len(chat_history),
+                        "page_url": page_url,
                         "faq_used": bool(faq_matches),
                         "site_used": bool(page_context),
                         "fallback_mode": True
-                    }
-                }
-                
-                debugger.log_request(
-                    session_id="smart_agent",
-                    user_message=message,
-                    response=fallback_response,
-                    response_time=response_time,
-                    debug_info=result["debug_info"]
+                    },
+                    error=None
                 )
-                
-                return result
             
             # Build prompt using Prompt Orchestrator
             combined_prompt = self.build_prompt(agent_context)
@@ -864,32 +877,36 @@ class SmartAIAgent:
             response = self.llm.invoke(messages)
             response_time = time.time() - start_time
             
-            # Prepare result
-            result = {
-                "response": response.content,
-                "style": style,
-                "response_time": response_time,
-                "web_content_used": bool(page_context),
-                "urls_processed": [page_url] if page_url and page_context else [],
-                "context_used": bool(faq_matches),
-                "timestamp": datetime.now().isoformat(),
-                "debug_info": {
+            # Prepare SmartAgentResponse
+            result = SmartAgentResponse(
+                response=response.content,
+                style=style,
+                response_time=response_time,
+                web_content_used=bool(page_context),
+                urls_processed=urls_processed,
+                context_used=bool(faq_matches or page_context or chat_history),
+                timestamp=datetime.now().isoformat(),
+                debug_info={
+                    "has_page_context": bool(page_context),
+                    "faq_matches_count": len(faq_matches),
+                    "history_len": len(chat_history),
+                    "page_url": page_url,
                     "faq_used": bool(faq_matches),
                     "site_used": bool(page_context),
                     "faq_count": len(faq_matches),
                     "message_length": len(message),
                     "response_length": len(response.content)
                 },
-                "error": None
-            }
+                error=None
+            )
             
             # Log to debugger
             debugger.log_request(
-                session_id="smart_agent",
+                session_id=context.get("session_id", "smart_agent") if context else "smart_agent",
                 user_message=message,
                 response=response.content,
                 response_time=response_time,
-                debug_info=result["debug_info"]
+                debug_info=result.debug_info or {}
             )
             
             return result
@@ -901,23 +918,24 @@ class SmartAIAgent:
             
             # Log error to debugger
             debugger.log_request(
-                session_id="smart_agent",
-                user_message=message,
+                session_id=context.get("session_id", "smart_agent") if context else "smart_agent",
+                user_message=message if 'message' in locals() else "",
                 response="",
                 response_time=response_time,
                 error_message=error_msg
             )
             
-            return {
-                "response": "متأسفانه خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید یا از فرم تماس استفاده کنید.",
-                "style": style if 'style' in locals() else "auto",
-                "response_time": response_time,
-                "web_content_used": False,
-                "urls_processed": [],
-                "context_used": False,
-                "timestamp": datetime.now().isoformat(),
-                "error": error_msg
-            }
+            # Return SmartAgentResponse with error
+            return SmartAgentResponse(
+                response="متأسفانه خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید یا از فرم تماس استفاده کنید.",
+                style=style if 'style' in locals() else "auto",
+                response_time=response_time,
+                web_content_used=False,
+                urls_processed=[],
+                context_used=False,
+                timestamp=datetime.now().isoformat(),
+                error=error_msg
+            )
     
     def _create_system_prompt(self, style: str, context: Dict[str, Any] = None) -> str:
         """Create system prompt based on style and context (Persian-first)"""
