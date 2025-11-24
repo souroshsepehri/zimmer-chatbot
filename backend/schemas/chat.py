@@ -7,6 +7,8 @@ class ChatRequest(BaseModel):
     message: str
     debug: Optional[bool] = False
     category_filter: Optional[str] = None
+    mode: Optional[str] = "auto"  # "auto", "smart_agent", or "baseline"
+    context: Optional[Dict[str, Any]] = None  # Can include session_id, page_url, history, etc.
 
 
 class ChatResponse(BaseModel):
