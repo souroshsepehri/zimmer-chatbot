@@ -163,6 +163,112 @@
             border-radius: 8px;
             margin-top: 20px;
         }
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            overflow: auto;
+        }
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        .close {
+            color: #aaa;
+            float: left;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: #000;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+        .form-group input[type="text"],
+        .form-group input[type="number"],
+        .form-group select,
+        .form-group input[type="range"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .form-group input[type="checkbox"] {
+            width: auto;
+            margin-left: 10px;
+        }
+        .form-actions {
+            margin-top: 30px;
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #5a6fd8;
+        }
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        .message {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .range-value {
+            display: inline-block;
+            margin-right: 10px;
+            font-weight: bold;
+            color: #667eea;
+        }
     </style>
 </head>
 <body>
@@ -280,6 +386,71 @@
         </div>
     </div>
     
+    <!-- Bot Settings Modal -->
+    <div id="botSettingsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeBotSettingsModal()">&times;</span>
+            <h2>⚙️ تنظیمات بات</h2>
+            <div id="botSettingsMessage"></div>
+            <form id="botSettingsForm">
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="settingsEnabled" name="enabled">
+                        بات فعال است
+                    </label>
+                </div>
+                
+                <div class="form-group">
+                    <label for="settingsDefaultStyle">استایل پیش‌فرض پاسخ‌گویی:</label>
+                    <select id="settingsDefaultStyle" name="default_style">
+                        <option value="auto">خودکار</option>
+                        <option value="formal">رسمی</option>
+                        <option value="casual">صمیمی</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="settingsUseFaq" name="use_faq">
+                        استفاده از FAQ داخلی
+                    </label>
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="settingsUseWebContext" name="use_web_context">
+                        استفاده از محتوای صفحات وب
+                    </label>
+                </div>
+                
+                <div class="form-group">
+                    <label for="settingsMaxAnswerChars">
+                        حداکثر طول پاسخ (کاراکتر):
+                        <span class="range-value" id="maxAnswerCharsValue">800</span>
+                    </label>
+                    <input type="range" id="settingsMaxAnswerChars" name="max_answer_chars" 
+                           min="200" max="2000" value="800" step="50"
+                           oninput="document.getElementById('maxAnswerCharsValue').textContent = this.value">
+                </div>
+                
+                <div class="form-group">
+                    <label for="settingsTemperature">
+                        درجه خلاقیت مدل:
+                        <span class="range-value" id="temperatureValue">0.3</span>
+                    </label>
+                    <input type="range" id="settingsTemperature" name="temperature" 
+                           min="0" max="1" value="0.3" step="0.1"
+                           oninput="document.getElementById('temperatureValue').textContent = this.value">
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeBotSettingsModal()">انصراف</button>
+                    <button type="submit" class="btn btn-primary">ذخیره تنظیمات</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
     <script>
         const API_BASE = window.location.origin + '/api';
         const ADMIN_API = window.location.origin;
@@ -322,8 +493,94 @@
         }
         
         function openSettings() {
-            // Open settings - you can implement a settings page later
-            alert('صفحه تنظیمات در حال توسعه است');
+            const modal = document.getElementById('botSettingsModal');
+            modal.style.display = 'block';
+            loadBotSettings();
+        }
+        
+        function closeBotSettingsModal() {
+            document.getElementById('botSettingsModal').style.display = 'none';
+        }
+        
+        async function loadBotSettings() {
+            const messageDiv = document.getElementById('botSettingsMessage');
+            messageDiv.innerHTML = '';
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/bot-settings`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const settings = await response.json();
+                
+                // Populate form fields
+                document.getElementById('settingsEnabled').checked = settings.enabled;
+                document.getElementById('settingsDefaultStyle').value = settings.default_style;
+                document.getElementById('settingsUseFaq').checked = settings.use_faq;
+                document.getElementById('settingsUseWebContext').checked = settings.use_web_context;
+                document.getElementById('settingsMaxAnswerChars').value = settings.max_answer_chars;
+                document.getElementById('maxAnswerCharsValue').textContent = settings.max_answer_chars;
+                document.getElementById('settingsTemperature').value = settings.temperature;
+                document.getElementById('temperatureValue').textContent = settings.temperature;
+                
+            } catch (error) {
+                console.error('Error loading bot settings:', error);
+                messageDiv.innerHTML = '<div class="message error">خطا در بارگذاری تنظیمات</div>';
+            }
+        }
+        
+        document.getElementById('botSettingsForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const messageDiv = document.getElementById('botSettingsMessage');
+            messageDiv.innerHTML = '';
+            
+            const formData = {
+                enabled: document.getElementById('settingsEnabled').checked,
+                default_style: document.getElementById('settingsDefaultStyle').value,
+                use_faq: document.getElementById('settingsUseFaq').checked,
+                use_web_context: document.getElementById('settingsUseWebContext').checked,
+                max_answer_chars: parseInt(document.getElementById('settingsMaxAnswerChars').value),
+                temperature: parseFloat(document.getElementById('settingsTemperature').value)
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/bot-settings`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                messageDiv.innerHTML = '<div class="message success">تنظیمات با موفقیت ذخیره شد</div>';
+                console.log('Bot settings saved:', result);
+                
+            } catch (error) {
+                console.error('Error saving bot settings:', error);
+                messageDiv.innerHTML = `<div class="message error">خطا در ذخیره تنظیمات: ${error.message}</div>`;
+            }
+        });
+        
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('botSettingsModal');
+            if (event.target === modal) {
+                closeBotSettingsModal();
+            }
         }
         
         function manageFAQ() {
