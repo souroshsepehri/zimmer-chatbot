@@ -4,7 +4,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from core.db import engine, Base
-from routers import chat, faqs, logs, smart_chat, simple_chat, external_api, debug, smart_agent, api_integration, admin
+from routers import chat, faqs, logs, smart_chat, simple_chat, external_api, debug, smart_agent, api_integration, admin, admin_bot_settings
 from core.config import settings
 
 # Import all models to ensure they are registered with SQLAlchemy
@@ -58,6 +58,7 @@ app.include_router(debug.router, prefix="/api", tags=["debug"])
 app.include_router(smart_agent.router, prefix="/api", tags=["smart-agent"])
 app.include_router(api_integration.router, prefix="/api", tags=["api-integration"])
 app.include_router(admin.router, tags=["admin"])
+app.include_router(admin_bot_settings.router)
 
 # Mount static files
 static_dir = Path(__file__).parent / "static"
