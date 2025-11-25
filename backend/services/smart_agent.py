@@ -1036,121 +1036,109 @@ class SmartAIAgent:
             logger.exception(f"SmartAIAgent LLM call failed: {e}")
             return None
     
-    async def _build_and_call_llm(self, agent_ctx: AgentContext) -> Optional[str]:
+    async def _build_and_call_llm(self, agent_ctx: AgentContext) -> str:
         """
         Build a comprehensive prompt and call the LLM.
         
-        Builds a single, well-structured prompt including:
-        - Persian system message (as specified)
-        - Optional developer-style message describing available context
-        - User-facing context in a single "assistant planning" message
-        - User message
+        Builds OpenAI chat messages list with:
+        - System message in Persian (as specified)
+        - Second system/developer message describing available context
+        - One assistant-style context message summarizing history, FAQ, and page content
+        - Final user message
         
-        Calls OpenAI API using the same client/configuration pattern.
-        Uses model from environment, falling back to sensible default.
+        Calls OpenAI API using the existing client/configuration pattern.
+        Uses model from environment/config, defaulting to project's current default.
         
         Args:
             agent_ctx: AgentContext with all enriched information
             
         Returns:
-            Final natural language answer (in Persian) as string, or None if failed
+            Final natural language answer (in Persian) as string
         """
         if not self.enabled or not self.llm:
-            return None
+            raise RuntimeError("LLM not available")
         
         try:
-            # Build Persian system message (as specified)
+            # System message (Persian) - exact text as specified
             system_message = (
-                "شما دستیار رسمی وب‌سایت زیمر هستید. همیشه به زبان فارسی پاسخ بده. "
-                "از محتوای صفحه‌ی وب، سوال کاربر و دانش پایه (FAQ) استفاده کن تا دقیق‌ترین و شفاف‌ترین پاسخ را بدهی. "
-                "اگر اطلاعات کافی نیست، صریح بگو و حدس نزن."
+                "شما دستیار رسمی وب‌سایت زیمر هستید. همیشه به زبان فارسی و شفاف پاسخ بده. "
+                "از محتوای صفحه‌ی وب، سوال کاربر، سابقه گفتگو و دانش پایه (FAQ) استفاده کن تا دقیق‌ترین و مختصرترین جواب را بدهی. "
+                "اگر اطلاعات کافی نداری، صریح بگو و حدس الکی نزن."
             )
             
-            # Optional developer-style message describing available context
-            context_summary_parts = []
-            if agent_ctx.history:
-                context_summary_parts.append("تاریخچه گفتگو موجود است")
-            if agent_ctx.faq_answer:
-                context_summary_parts.append("پاسخ FAQ موجود است")
+            # Second system / developer message describing available context
+            context_parts = []
             if agent_ctx.page_content:
-                context_summary_parts.append("محتوای صفحه وب موجود است")
-            
-            if context_summary_parts:
-                developer_message = f"[زمینه موجود: {', '.join(context_summary_parts)}]"
-            else:
-                developer_message = "[زمینه موجود: هیچ‌کدام]"
-            
-            # Build user-facing context in a single "assistant planning" message
-            user_prompt_parts = []
-            
-            # Summary of history (if not empty, in 2-3 sentences)
+                context_parts.append("has page_content")
+            if agent_ctx.faq_answer:
+                context_parts.append("has faq_answer")
             if agent_ctx.history:
-                recent_history = agent_ctx.history[-3:]  # Last 3 turns for summary
-                history_summary = []
+                context_parts.append(f"history length: {len(agent_ctx.history)}")
+            
+            if context_parts:
+                developer_message = f"[Context available: {', '.join(context_parts)}]"
+            else:
+                developer_message = "[Context available: none]"
+            
+            # One assistant-style context message that summarizes:
+            context_summary_parts = []
+            
+            # If history not empty → 1-3 line summary of previous turns
+            if agent_ctx.history:
+                recent_history = agent_ctx.history[-3:]  # Last 3 turns
+                history_lines = []
                 for msg in recent_history:
                     role = msg.get("role", "user")
                     content = msg.get("content", "")
-                    if len(content) > 100:
-                        content = content[:100] + "..."
-                    role_label = "کاربر" if role == "user" else "دستیار"
-                    history_summary.append(f"{role_label}: {content}")
+                    if len(content) > 150:
+                        content = content[:150] + "..."
+                    role_label = "User" if role == "user" else "Assistant"
+                    history_lines.append(f"{role_label}: {content}")
                 
-                if len(history_summary) <= 2:
-                    user_prompt_parts.append(f"خلاصه تاریخچه گفتگو: {' | '.join(history_summary)}")
+                if len(history_lines) <= 3:
+                    context_summary_parts.append(f"Previous conversation: {' | '.join(history_lines)}")
                 else:
-                    user_prompt_parts.append(f"خلاصه تاریخچه گفتگو: {' | '.join(history_summary[:2])} ...")
-                user_prompt_parts.append("")
+                    context_summary_parts.append(f"Previous conversation: {' | '.join(history_lines[:2])} ...")
             
-            # Summary of FAQ used (if exists)
+            # If faq_answer exists → short note that "knowledge base suggests: ..."
             if agent_ctx.faq_answer:
-                faq_summary = agent_ctx.faq_answer
-                if len(faq_summary) > 300:
-                    faq_summary = faq_summary[:300] + "..."
-                user_prompt_parts.append(f"خلاصه FAQ استفاده‌شده:\n{faq_summary}")
-                if agent_ctx.faq_intent:
-                    user_prompt_parts.append(f"(نیت: {agent_ctx.faq_intent}, اطمینان: {agent_ctx.faq_confidence:.2f})")
-                user_prompt_parts.append("")
+                faq_note = agent_ctx.faq_answer
+                if len(faq_note) > 400:
+                    faq_note = faq_note[:400] + "..."
+                context_summary_parts.append(f"Knowledge base suggests: {faq_note}")
             
-            # Summary of page text (if page_content is filled; max in a few lines)
+            # If page_content exists → short abstract of the page (truncate to 800-1000 chars)
             if agent_ctx.page_content:
-                if agent_ctx.page_title:
-                    user_prompt_parts.append(f"عنوان صفحه: {agent_ctx.page_title}")
-                if agent_ctx.page_description:
-                    user_prompt_parts.append(f"توضیحات: {agent_ctx.page_description}")
-                
-                content_summary = agent_ctx.page_content
-                if len(content_summary) > 800:
-                    content_summary = content_summary[:800] + "..."
-                user_prompt_parts.append(f"خلاصه متن صفحه:\n{content_summary}")
-                user_prompt_parts.append("")
+                page_abstract = agent_ctx.page_content
+                if len(page_abstract) > 1000:
+                    page_abstract = page_abstract[:1000] + "..."
+                context_summary_parts.append(f"Current page content: {page_abstract}")
             
-            # User's current message
-            user_prompt_parts.append(f"آخرین پیام کاربر:\n{agent_ctx.user_message}")
+            # Combine context summary
+            context_summary = "\n".join(context_summary_parts) if context_summary_parts else "No additional context available."
             
-            # Combine user prompt
-            user_prompt = "\n".join(user_prompt_parts)
+            # Final user message
+            user_message_content = agent_ctx.user_message
             
             # Build messages list
             messages = [
                 SystemMessage(content=system_message),
+                SystemMessage(content=developer_message),
+                HumanMessage(content=f"Context:\n{context_summary}\n\nUser question: {user_message_content}")
             ]
-            
-            # Add developer message if context exists
-            if context_summary_parts:
-                messages.append(SystemMessage(content=developer_message))
-            
-            # Add user message with context
-            messages.append(HumanMessage(content=user_prompt))
             
             # Call LLM using the existing client pattern
             response = self.llm.invoke(messages)
             answer = response.content.strip()
             
-            return answer if answer else None
+            if not answer:
+                raise ValueError("LLM returned empty response")
+            
+            return answer
             
         except Exception as e:
             logger.exception(f"Error in _build_and_call_llm: {e}")
-            return None
+            raise
     
     def _build_prompt(self, agent_ctx: AgentContext, style: Optional[str] = None) -> str:
         """
@@ -1374,50 +1362,41 @@ class SmartAIAgent:
             await self._enrich_with_faq_answer(agent_ctx)
             
             # STEP 4: Decide whether to call LLM
-            llm_text: Optional[str] = None
+            answer_text: str
             fallback_used = False
             
-            # Check if LLM is available
+            # Check if there is no OpenAI API key or LLM client cannot be used
             if not self.enabled or not self.llm:
-                # LLM not available - use fallback logic
+                # No LLM available - use fallback logic
                 if agent_ctx.faq_answer:
-                    # Use FAQ answer and mention it comes from knowledge base
+                    # Use FAQ answer as main answer, with small note
                     answer_text = agent_ctx.faq_answer
-                    answer_text += "\n\n(این پاسخ از پایگاه دانش استخراج شده است.)"
-                    source = "faq_fallback"
+                    answer_text += "\n\nاین جواب از پایگاه دانش داخلی آمده است."
                 elif agent_ctx.page_content:
-                    # Summarize page and ask user to be more specific
+                    # Produce short summary of page content manually (no LLM, simple slicing)
                     page_summary = agent_ctx.page_content[:300] + "..." if len(agent_ctx.page_content) > 300 else agent_ctx.page_content
-                    answer_text = f"بر اساس محتوای صفحه فعلی:\n\n{page_summary}\n\nاگر سوال دقیق‌تری دارید، لطفاً آن را به شکل دیگری مطرح کنید."
-                    source = "page_fallback"
+                    answer_text = f"بر اساس محتوای صفحه فعلی:\n\n{page_summary}\n\nلطفاً سوال خود را دقیق‌تر مطرح کنید."
                 else:
-                    # Minimal safe fallback
+                    # Safe fallback similar to current stub
                     core = await self._generate_response(message, user_id=agent_ctx.session_id)
                     answer_text = core.get("answer", "متأسفانه در حال حاضر پاسخ مناسبی پیدا نشد. لطفاً دوباره تلاش کنید.")
-                    source = "stub_fallback"
             else:
                 # LLM is available - call it
-                llm_text = await self._build_and_call_llm(agent_ctx)
-                
-                if llm_text and llm_text.strip():
-                    # LLM succeeded
-                    answer_text = llm_text.strip()
-                    source = "smart_agent_llm"
-                else:
-                    # LLM failed - use fallback
+                try:
+                    answer_text = await self._build_and_call_llm(agent_ctx)
+                except Exception as e:
+                    logger.warning(f"LLM call failed, using fallback: {e}")
                     fallback_used = True
+                    # Fallback to FAQ or page content
                     if agent_ctx.faq_answer:
                         answer_text = agent_ctx.faq_answer
-                        answer_text += "\n\n(این پاسخ از پایگاه دانش استخراج شده است.)"
-                        source = "faq_fallback"
+                        answer_text += "\n\nاین جواب از پایگاه دانش داخلی آمده است."
                     elif agent_ctx.page_content:
                         page_summary = agent_ctx.page_content[:300] + "..." if len(agent_ctx.page_content) > 300 else agent_ctx.page_content
-                        answer_text = f"بر اساس محتوای صفحه فعلی:\n\n{page_summary}\n\nاگر سوال دقیق‌تری دارید، لطفاً آن را به شکل دیگری مطرح کنید."
-                        source = "page_fallback"
+                        answer_text = f"بر اساس محتوای صفحه فعلی:\n\n{page_summary}\n\nلطفاً سوال خود را دقیق‌تر مطرح کنید."
                     else:
                         core = await self._generate_response(message, user_id=agent_ctx.session_id)
                         answer_text = core.get("answer", "متأسفانه در حال حاضر پاسخ مناسبی پیدا نشد. لطفاً دوباره تلاش کنید.")
-                        source = "stub_fallback"
             
             end_time = datetime.now(timezone.utc)
             response_time = (end_time - start_time).total_seconds()
@@ -1427,21 +1406,15 @@ class SmartAIAgent:
             urls_processed = [agent_ctx.page_url] if agent_ctx.page_url and web_content_used else []
             context_used = bool(agent_ctx.page_content or agent_ctx.faq_answer or agent_ctx.history)
             
+            # Build debug_info as specified
+            api_key_available = bool(self.enabled and self.llm)
             debug_info = {
                 "mode": "hybrid_web_faq_llm",
-                "has_openai_key": self.enabled,
+                "has_openai_key": api_key_available,
                 "session_id": agent_ctx.session_id,
                 "history_len": len(agent_ctx.history),
                 "faq_debug": agent_ctx.faq_debug,
                 "site_metadata": agent_ctx.site_metadata,
-                "faq_source": agent_ctx.faq_source,
-                "faq_intent": agent_ctx.faq_intent,
-                "faq_confidence": agent_ctx.faq_confidence,
-                "page_url": agent_ctx.page_url,
-                "page_title": agent_ctx.page_title,
-                "page_description": agent_ctx.page_description,
-                "llm_disabled": not self.enabled,
-                "fallback_used": fallback_used,
             }
             
             result = {
@@ -1472,7 +1445,7 @@ class SmartAIAgent:
             end_time = datetime.now(timezone.utc)
             response_time = (end_time - start_time).total_seconds()
             
-            # Return safe error response
+            # Return safe error response (as specified)
             return {
                 "response": "متأسفانه خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید.",
                 "style": style or "auto",
@@ -1482,8 +1455,8 @@ class SmartAIAgent:
                 "context_used": False,
                 "timestamp": end_time.isoformat(),
                 "debug_info": {
+                    "mode": "error",
                     "error": str(e),
-                    "llm_disabled": not self.enabled,
                 },
                 "error": str(e),
             }
