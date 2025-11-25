@@ -1,0 +1,7 @@
+{
+  "bot_name": "Zimmer AI",
+  "welcome_message": "Welcome to Zimmer AI. How can I help you today?",
+  "fallback_message": "I apologize, but I could not understand your request. Please try rephrasing your question.",
+  "language": "fa"
+}
+
