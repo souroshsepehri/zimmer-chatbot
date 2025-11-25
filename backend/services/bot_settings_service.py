@@ -26,7 +26,7 @@ def load_bot_settings() -> BotSettings:
 def save_bot_settings(settings: BotSettings) -> None:
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     SETTINGS_FILE.write_text(
-        json.dumps(settings.model_dump(), ensure_ascii=False, indent=2),
+        settings.model_dump_json(indent=2),
         encoding="utf-8",
     )
     logger.info("Bot settings saved to %s", SETTINGS_FILE)
