@@ -93,23 +93,25 @@ class ChatOrchestrator:
             "history": history,
         }
 
-        # Step 2: Try to enhance with SmartAIAgent (unless mode is "baseline")
+        # Step 2: Try to use SmartAIAgent (unless mode is "baseline")
         smart_result = None
-        if mode != "baseline":
-            # Check if smart agent is enabled before attempting to use it
-            if not smart_agent.enabled:
-                logger.debug("SmartAIAgent is disabled (missing API key or SMART_AGENT_ENABLED=false). Using baseline answer only.")
-            else:
-                try:
-                    smart_result = await smart_agent.generate_smart_answer(
-                        user_message=message,
-                        baseline_answer=baseline_answer,
-                        debug_context=baseline_debug,
-                    )
-                except Exception as e:
-                    # Log error but don't crash - continue with baseline answer
-                    logger.error(f"SmartAIAgent failed during enhancement: {e}. Continuing with baseline answer.")
-                    smart_result = None
+        if mode != "baseline" and smart_agent.enabled:
+            # Use SmartAIAgent.run() - the high-level entrypoint
+            try:
+                smart_result = await smart_agent.run(
+                    message=message,
+                    context={
+                        "baseline_answer": baseline_answer,
+                        **baseline_debug,
+                    },
+                )
+                logger.debug(f"SmartAIAgent.run() returned: success={smart_result.get('success')}")
+            except Exception as e:
+                # Log error but don't crash - continue with baseline answer
+                logger.error(f"SmartAIAgent.run() failed: {e}. Continuing with baseline answer.")
+                smart_result = None
+        elif mode != "baseline":
+            logger.debug("SmartAIAgent is disabled (missing API key or SMART_AGENT_ENABLED=false). Using baseline answer only.")
 
         # Step 3: Build final response
         # Start with baseline response structure
@@ -131,14 +133,29 @@ class ChatOrchestrator:
 
         # If SmartAIAgent succeeded, use its answer
         if smart_result is not None and smart_result.get("success") is True:
-            answer = smart_result.get("answer", baseline_answer)
-            source = "smart+baseline"
-            debug_info["smart_agent_raw"] = smart_result
-            logger.info("Using SmartAIAgent enhanced answer")
+            smart_answer = smart_result.get("answer")
+            if smart_answer and smart_answer.strip():
+                # Use SmartAgent's answer as the final answer
+                answer = smart_answer
+                source = "smart_agent"
+                success = True
+                logger.info("Using SmartAIAgent answer (success=True)")
+            else:
+                # SmartAgent returned success but no answer - fallback to baseline
+                answer = baseline_answer
+                source = baseline.get("source", "fallback")
+                logger.warning("SmartAIAgent returned success=True but empty answer. Using baseline.")
         else:
-            # Keep baseline behavior
-            debug_info["smart_agent_raw"] = None
-            logger.info("Using baseline answer (SmartAIAgent not available or failed)")
+            # SmartAgent not available or failed - use baseline
+            answer = baseline_answer
+            source = baseline.get("source", "fallback")
+            if smart_result is not None:
+                logger.info(f"SmartAIAgent failed: reason={smart_result.get('reason')}. Using baseline answer.")
+            else:
+                logger.info("Using baseline answer (SmartAIAgent not available or disabled)")
+        
+        # Always store smart_result in debug_info (even if None or failed)
+        debug_info["smart_agent_raw"] = smart_result
 
         # Return final response (preserving existing structure)
         return {

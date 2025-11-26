@@ -223,6 +223,84 @@ class SmartAIAgent:
             self.enabled = False
             self.llm = None
 
+    async def run(
+        self,
+        message: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        High-level entrypoint used by chat_orchestrator.
+        
+        Returns a dict that will be stored under debug_info['smart_agent_raw'].
+        
+        Args:
+            message: User's message
+            context: Optional context dict (can include baseline_answer, intent, etc.)
+            
+        Returns:
+            dict with keys: {"answer": str or None, "success": bool, "model": str, "reason": str (optional), "error": str (optional)}
+        """
+        if not self.enabled or self.llm is None:
+            return {
+                "answer": None,
+                "success": False,
+                "reason": "smart_agent_disabled",
+            }
+
+        system_prompt = (
+            "You are Zimmerman (Zimmer AI Automation) website assistant. "
+            "You answer in fluent Persian. "
+            "Explain clearly what Zimmerman does: building custom AI automations, chatbots, "
+            "travel agency AI, online shop agents, debt collector bot, etc. "
+            "If user asks general or business questions about Zimmerman, answer helpfully, "
+            "even if it's not in the FAQ database."
+        )
+
+        # Build messages for LangChain ChatOpenAI
+        try:
+            from langchain.schema import SystemMessage, HumanMessage
+        except ImportError:
+            from langchain_core.messages import SystemMessage, HumanMessage
+
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=message),
+        ]
+
+        # If context has baseline_answer, add it as context
+        if context and context.get("baseline_answer"):
+            baseline_msg = (
+                "این یک پاسخ اولیه از سیستم داخلی است. "
+                "اگر مفید است از آن استفاده کن، اگر ناقص است آن را کامل و بهتر کن:\n"
+                f"{context['baseline_answer']}"
+            )
+            messages.insert(1, SystemMessage(content=baseline_msg))
+
+        try:
+            resp = await self.llm.ainvoke(messages)
+            answer_text = resp.content if hasattr(resp, "content") else str(resp)
+            
+            if not answer_text or not answer_text.strip():
+                return {
+                    "answer": None,
+                    "success": False,
+                    "reason": "empty_response",
+                }
+            
+            return {
+                "answer": answer_text.strip(),
+                "success": True,
+                "model": self.model_name,
+            }
+        except Exception as e:
+            self.logger.exception("SmartAIAgent: error during LLM call: %s", e)
+            return {
+                "answer": None,
+                "success": False,
+                "reason": "llm_error",
+                "error": str(e),
+            }
+
     async def generate_smart_answer(
         self,
         user_message: str,
