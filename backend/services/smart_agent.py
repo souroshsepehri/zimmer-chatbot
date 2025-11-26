@@ -11,14 +11,26 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 
 # LangChain imports (modern API)
+# Try to import ChatOpenAI - this should NOT crash the module if import fails
+ChatOpenAI = None
 try:
     from langchain_openai import ChatOpenAI
-except ImportError:
+    logger_import = logging.getLogger("smart_agent")
+    logger_import.debug("Successfully imported ChatOpenAI from langchain_openai")
+except ImportError as e1:
     try:
         from langchain.chat_models import ChatOpenAI
-    except ImportError:
+        logger_import = logging.getLogger("smart_agent")
+        logger_import.debug("Successfully imported ChatOpenAI from langchain.chat_models")
+    except ImportError as e2:
+        # Both imports failed - this is OK, SmartAIAgent will be disabled
         ChatOpenAI = None
-        logging.warning("LangChain ChatOpenAI not available")
+        logger_import = logging.getLogger("smart_agent")
+        logger_import.warning(
+            "LangChain ChatOpenAI not available. Tried langchain_openai (%s) and langchain.chat_models (%s). "
+            "SmartAIAgent will be disabled. Install with: pip install langchain-openai",
+            str(e1), str(e2)
+        )
 
 
 logger = logging.getLogger("smart_agent")
@@ -165,45 +177,64 @@ class SmartAIAgent:
 
     def __init__(self) -> None:
         """Initialize SmartAIAgent with configuration"""
-        # Check if API key is missing
-        has_api_key = bool(OPENAI_API_KEY)
+        # Initialize to disabled state
+        self.enabled = False
+        self.llm = None
         
-        # Check if explicitly disabled
-        is_enabled_flag = SMART_AGENT_ENABLED
-        
-        # Determine if agent should be enabled
-        self.enabled = is_enabled_flag and has_api_key
-        
-        if not self.enabled:
-            # Log clear reason for being disabled
-            if not has_api_key:
-                logger.info("SmartAIAgent disabled: OPENAI_API_KEY is missing or empty. /api/chat will use baseline logic only.")
-            elif not is_enabled_flag:
-                logger.info("SmartAIAgent disabled: SMART_AGENT_ENABLED is set to 'false'. /api/chat will use baseline logic only.")
-            else:
-                logger.info("SmartAIAgent disabled. /api/chat will use baseline logic only.")
-            self.llm = None
+        # Step 1: Check if explicitly disabled via env var
+        if not SMART_AGENT_ENABLED:
+            logger.info("SmartAIAgent disabled: SMART_AGENT_ENABLED is set to 'false'. /api/chat will use baseline logic only.")
             return
         
-        # Check LangChain availability
+        # Step 2: Check if API key is provided
+        if not OPENAI_API_KEY or not OPENAI_API_KEY.strip():
+            logger.info("SmartAIAgent disabled: OPENAI_API_KEY is missing or empty. /api/chat will use baseline logic only.")
+            return
+        
+        # Step 3: Check LangChain availability
         if ChatOpenAI is None:
             logger.warning(
-                "SmartAIAgent: LangChain ChatOpenAI not available. Smart agent is DISABLED."
+                "SmartAIAgent: LangChain ChatOpenAI not available (langchain-openai or langchain not installed). "
+                "Smart agent is DISABLED. /api/chat will use baseline logic only."
             )
-            self.enabled = False
-            self.llm = None
             return
         
-        # Initialize LangChain chat model
+        # Step 4: Validate model name
+        if not OPENAI_MODEL or not OPENAI_MODEL.strip():
+            logger.warning(
+                "SmartAIAgent: OPENAI_MODEL is empty, using default 'gpt-3.5-turbo'"
+            )
+            model_name = "gpt-3.5-turbo"
+        else:
+            model_name = OPENAI_MODEL.strip()
+        
+        # Step 5: Initialize LangChain chat model
         try:
             self.llm = ChatOpenAI(
-                model=OPENAI_MODEL,
-                openai_api_key=OPENAI_API_KEY,
+                model=model_name,
+                openai_api_key=OPENAI_API_KEY.strip(),
                 temperature=0.4,
             )
-            logger.info("SmartAIAgent initialized with model %s", OPENAI_MODEL)
+            
+            # Verify the llm object is valid
+            if self.llm is None:
+                raise ValueError("ChatOpenAI initialization returned None")
+            
+            # If we get here, everything is good
+            self.enabled = True
+            logger.info(
+                "SmartAIAgent successfully initialized with model '%s'. "
+                "Smart agent is ENABLED and ready to enhance responses.",
+                model_name
+            )
+            
         except Exception as e:
-            logger.error(f"Failed to initialize SmartAIAgent LLM: {e}")
+            logger.error(
+                "SmartAIAgent: Failed to initialize ChatOpenAI LLM: %s. "
+                "Smart agent is DISABLED. /api/chat will use baseline logic only.",
+                e,
+                exc_info=True
+            )
             self.enabled = False
             self.llm = None
 
@@ -213,20 +244,34 @@ class SmartAIAgent:
         baseline_answer: Optional[str] = None,
         debug_context: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Generate a smart answer using LangChain Chat model.
+        """Generate a smart answer using LangChain ChatOpenAI model.
+
+        This method uses GPT to enhance baseline answers or generate new responses.
+        It requires:
+        - OPENAI_API_KEY to be set
+        - SMART_AGENT_ENABLED to be "true"
+        - LangChain ChatOpenAI to be available
 
         Args:
             user_message: The user's original question/message
-            baseline_answer: Optional answer from baseline engine (FAQ/DB)
+            baseline_answer: Optional answer from baseline engine (FAQ/DB) to enhance
             debug_context: Optional debug context (intent, confidence, source, etc.)
 
         Returns:
-            dict with keys like {"answer": str, "model": str, "success": bool, "raw": Any}
-            or None if disabled or any error occurs.
+            dict with keys: {"answer": str, "model": str, "usage": dict, "success": bool, "raw": Any}
+            or None if disabled, llm is None, or any error occurs.
+            
+        Note:
+            This method will NOT crash the app. If any error occurs, it logs the error
+            and returns None, allowing the baseline logic to handle the request.
         """
-        if not self.enabled or self.llm is None:
-            # Log clear message and return None - this ensures /api/chat continues with baseline logic
+        # Validate agent is enabled and llm is available
+        if not self.enabled:
             logger.debug("SmartAIAgent.generate_smart_answer called but agent is disabled. Returning None to use baseline logic.")
+            return None
+        
+        if self.llm is None:
+            logger.warning("SmartAIAgent.generate_smart_answer called but self.llm is None (should not happen if enabled=True). Returning None.")
             return None
 
         try:
@@ -269,19 +314,35 @@ class SmartAIAgent:
             # Asynchronous call via LangChain
             result = await self.llm.ainvoke(messages)
 
-            # result.content should be the answer text for ChatOpenAI
-            answer_text = getattr(result, "content", None)
-            if not answer_text:
-                logger.warning("SmartAIAgent: empty content from LLM result=%r", result)
+            # Extract answer text from result
+            # For ChatOpenAI, result should have a 'content' attribute
+            answer_text = None
+            if hasattr(result, "content"):
+                answer_text = result.content
+            elif isinstance(result, str):
+                answer_text = result
+            elif hasattr(result, "text"):
+                answer_text = result.text
+            else:
+                # Try to get content from message object
+                logger.warning("SmartAIAgent: unexpected result type, trying to extract content. result=%r", type(result))
+                answer_text = str(result) if result else None
+            
+            if not answer_text or not answer_text.strip():
+                logger.warning("SmartAIAgent: empty or whitespace-only content from LLM. result=%r", result)
                 return None
 
             # Extract usage info if available
             usage = {}
-            if hasattr(result, "response_metadata"):
-                usage = result.response_metadata or {}
+            if hasattr(result, "response_metadata") and result.response_metadata:
+                usage = result.response_metadata
+            elif hasattr(result, "usage"):
+                usage = result.usage
 
+            logger.debug("SmartAIAgent: Successfully generated answer using model %s", OPENAI_MODEL)
+            
             return {
-                "answer": answer_text,
+                "answer": answer_text.strip(),
                 "model": OPENAI_MODEL,
                 "usage": usage,
                 "success": True,
