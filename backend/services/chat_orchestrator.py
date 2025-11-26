@@ -95,16 +95,21 @@ class ChatOrchestrator:
 
         # Step 2: Try to enhance with SmartAIAgent (unless mode is "baseline")
         smart_result = None
-        if mode != "baseline" and smart_agent.enabled:
-            try:
-                smart_result = await smart_agent.generate_smart_answer(
-                    user_message=message,
-                    baseline_answer=baseline_answer,
-                    debug_context=baseline_debug,
-                )
-            except Exception as e:
-                logger.exception("SmartAIAgent failed during enhancement: %s", e)
-                # Continue with baseline answer
+        if mode != "baseline":
+            # Check if smart agent is enabled before attempting to use it
+            if not smart_agent.enabled:
+                logger.debug("SmartAIAgent is disabled (missing API key or SMART_AGENT_ENABLED=false). Using baseline answer only.")
+            else:
+                try:
+                    smart_result = await smart_agent.generate_smart_answer(
+                        user_message=message,
+                        baseline_answer=baseline_answer,
+                        debug_context=baseline_debug,
+                    )
+                except Exception as e:
+                    # Log error but don't crash - continue with baseline answer
+                    logger.error(f"SmartAIAgent failed during enhancement: {e}. Continuing with baseline answer.")
+                    smart_result = None
 
         # Step 3: Build final response
         # Start with baseline response structure

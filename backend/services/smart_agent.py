@@ -165,10 +165,23 @@ class SmartAIAgent:
 
     def __init__(self) -> None:
         """Initialize SmartAIAgent with configuration"""
-        self.enabled = SMART_AGENT_ENABLED and bool(OPENAI_API_KEY)
+        # Check if API key is missing
+        has_api_key = bool(OPENAI_API_KEY)
+        
+        # Check if explicitly disabled
+        is_enabled_flag = SMART_AGENT_ENABLED
+        
+        # Determine if agent should be enabled
+        self.enabled = is_enabled_flag and has_api_key
         
         if not self.enabled:
-            logger.info("SmartAIAgent disabled (missing API key or SMART_AGENT_ENABLED=false).")
+            # Log clear reason for being disabled
+            if not has_api_key:
+                logger.info("SmartAIAgent disabled: OPENAI_API_KEY is missing or empty. /api/chat will use baseline logic only.")
+            elif not is_enabled_flag:
+                logger.info("SmartAIAgent disabled: SMART_AGENT_ENABLED is set to 'false'. /api/chat will use baseline logic only.")
+            else:
+                logger.info("SmartAIAgent disabled. /api/chat will use baseline logic only.")
             self.llm = None
             return
         
@@ -212,7 +225,8 @@ class SmartAIAgent:
             or None if disabled or any error occurs.
         """
         if not self.enabled or self.llm is None:
-            logger.info("SmartAIAgent.generate_smart_answer called but agent is disabled.")
+            # Log clear message and return None - this ensures /api/chat continues with baseline logic
+            logger.debug("SmartAIAgent.generate_smart_answer called but agent is disabled. Returning None to use baseline logic.")
             return None
 
         try:
@@ -274,8 +288,9 @@ class SmartAIAgent:
                 "raw": result,
             }
 
-        except Exception:
-            logger.exception("SmartAIAgent: error while generating smart answer")
+        except Exception as e:
+            # Log error but don't crash - return None so baseline logic can be used
+            logger.error(f"SmartAIAgent: error while generating smart answer: {e}. Returning None to use baseline logic.")
             return None
 
     async def get_smart_response(
@@ -338,8 +353,7 @@ class SmartAIAgent:
         result = await self.generate_smart_answer(
             user_message=message,
             baseline_answer=None,
-            baseline_metadata=None,
-            context=context,
+            debug_context=context,
         )
         
         if result:
