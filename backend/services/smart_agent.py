@@ -140,20 +140,12 @@ class AgentContext:
 
 # Import agents with fallback
 try:
-    from langchain.agents import initialize_agent, AgentType
+    from langchain.agents import initialize_agent
 except ImportError:
     try:
-        from langchain.agent import initialize_agent, AgentType
+        from langchain.agent import initialize_agent
     except ImportError:
-        # Fallback for newer langchain versions
-        try:
-            from langchain.agents.agent_types import AgentType
-        except ImportError:
-            # Create a dummy AgentType enum
-            from enum import Enum
-            class AgentType(Enum):
-                ZERO_SHOT_REACT_DESCRIPTION = "zero_shot_react_description"
-        def initialize_agent(tools, llm, agent, verbose, memory):
+        def initialize_agent(tools, llm, agent, verbose, handle_parsing_errors):
             logger.warning("Agent initialization not fully supported in this langchain version")
             return None
 
@@ -426,16 +418,25 @@ class SmartAIAgent:
         return tools
     
     def _create_agent(self):
-        """Create the AI agent with tools"""
+        """Create the LangChain agent that powers SmartAIAgent.
+
+        NOTE:
+            We avoid using AgentType enum because newer LangChain versions
+            removed or changed it. We instead pass the agent type as a string.
+        """
         if not self.openai_available:
             return None
-        
-        return initialize_agent(
+
+        agent_type = "chat-conversational-react-description"
+
+        agent = initialize_agent(
             tools=self.tools,
             llm=self.llm,
-            agent=AgentType.OPENAI_FUNCTIONS,
-            verbose=True
+            agent=agent_type,
+            handle_parsing_errors=True,
+            verbose=True,
         )
+        return agent
     
     def _web_reader_tool(self, url: str) -> str:
         """Tool function for reading web content"""
