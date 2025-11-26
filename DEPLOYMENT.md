@@ -83,3 +83,5 @@ Test admin endpoint (replace YOUR_TOKEN with your actual admin token):
 curl -H "X-Admin-Token: YOUR_TOKEN" http://localhost:8000/api/admin/bot-settings
 ```
 
+
+

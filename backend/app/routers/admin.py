@@ -66,3 +66,5 @@ async def update_bot_settings(
     save_bot_settings(settings_dict)
     return {"message": "Bot settings updated successfully", "settings": settings_dict}
 
+
+

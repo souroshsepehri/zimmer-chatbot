@@ -291,3 +291,8 @@ pytest tests/test_smart_agent.py -v
 - **Fully backward compatible**: Works without `style` parameter
 - **Persian-first**: All labels and descriptions are in Persian
 
+
+
+
+
+

@@ -16,3 +16,5 @@ def get_settings() -> Settings:
         _settings_instance = Settings()
     return _settings_instance
 
+
+

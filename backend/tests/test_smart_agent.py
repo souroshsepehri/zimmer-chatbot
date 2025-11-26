@@ -299,3 +299,8 @@ class TestSmartAgentBackwardCompatibility:
             assert "style" in data
             assert data["style"] in [s.value for s in ResponseStyle]
 
+
+
+
+
+

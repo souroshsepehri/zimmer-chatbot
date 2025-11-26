@@ -1,0 +1,8 @@
+{
+  "enabled": true,
+  "default_style": "auto",
+  "use_faq": true,
+  "use_web_context": true,
+  "max_answer_chars": 800,
+  "temperature": 0.3
+}

@@ -28,3 +28,8 @@ export function useZimmerChatSessionId(): string | null {
   return sessionId;
 }
 
+
+
+
+
+
