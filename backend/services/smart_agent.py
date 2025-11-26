@@ -9,6 +9,14 @@ import os
 import logging
 from typing import Any, Dict, Optional
 
+# Try to load .env file if python-dotenv is available
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # python-dotenv not available, rely on system environment
+    pass
+
 try:
     # Newer LangChain style
     from langchain_openai import ChatOpenAI
