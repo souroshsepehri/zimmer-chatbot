@@ -256,11 +256,20 @@ class SmartAIAgent:
             "even if it's not in the FAQ database."
         )
 
-        # Build messages for LangChain ChatOpenAI
+        # Build messages for LangChain ChatOpenAI (using modern API)
         try:
-            from langchain.schema import SystemMessage, HumanMessage
-        except ImportError:
             from langchain_core.messages import SystemMessage, HumanMessage
+        except ImportError:
+            # Fallback for older LangChain versions
+            try:
+                from langchain.schema import SystemMessage, HumanMessage
+            except ImportError:
+                self.logger.error("Could not import SystemMessage/HumanMessage from langchain_core or langchain.schema")
+                return {
+                    "answer": None,
+                    "success": False,
+                    "reason": "import_error",
+                }
 
         messages = [
             SystemMessage(content=system_prompt),
@@ -341,11 +350,16 @@ class SmartAIAgent:
             # Build messages list compatible with the ChatOpenAI invoke/ainvoke API.
             messages = []
 
-            # System message
+            # System message (using modern LangChain API)
             try:
-                from langchain.schema import SystemMessage, HumanMessage
-            except ImportError:
                 from langchain_core.messages import SystemMessage, HumanMessage
+            except ImportError:
+                # Fallback for older LangChain versions
+                try:
+                    from langchain.schema import SystemMessage, HumanMessage
+                except ImportError:
+                    self.logger.error("Could not import SystemMessage/HumanMessage from langchain_core or langchain.schema")
+                    return None
 
             messages.append(SystemMessage(content=SYSTEM_PROMPT))
 
