@@ -12,33 +12,32 @@ from datetime import datetime
 
 # LangChain imports (modern API)
 # Try to import ChatOpenAI - this should NOT crash the module if import fails
-ChatOpenAI = None
 try:
+    # LangChain جدید
     from langchain_openai import ChatOpenAI
-    logger_import = logging.getLogger("smart_agent")
-    logger_import.debug("Successfully imported ChatOpenAI from langchain_openai")
-except ImportError as e1:
+except ImportError:
+    # fallback برای نسخه‌های قدیمی‌تر
     try:
         from langchain.chat_models import ChatOpenAI
-        logger_import = logging.getLogger("smart_agent")
-        logger_import.debug("Successfully imported ChatOpenAI from langchain.chat_models")
-    except ImportError as e2:
+    except ImportError:
         # Both imports failed - this is OK, SmartAIAgent will be disabled
         ChatOpenAI = None
-        logger_import = logging.getLogger("smart_agent")
-        logger_import.warning(
-            "LangChain ChatOpenAI not available. Tried langchain_openai (%s) and langchain.chat_models (%s). "
-            "SmartAIAgent will be disabled. Install with: pip install langchain-openai",
-            str(e1), str(e2)
-        )
 
 
-logger = logging.getLogger("smart_agent")
-
-# Environment variables
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY_ZIMMER")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-SMART_AGENT_ENABLED = os.getenv("SMART_AGENT_ENABLED", "true").lower() == "true"
+def get_env_bool(name: str, default: bool = False) -> bool:
+    """Helper function to get boolean value from environment variable.
+    
+    Args:
+        name: Environment variable name
+        default: Default value if env var is not set
+        
+    Returns:
+        bool: True if env var is one of ("1", "true", "yes", "y", "on"), False otherwise
+    """
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "y", "on")
 
 # System prompt for Zimmer AI automation agency
 SYSTEM_PROMPT = """You are Zimmer, an AI automation agency specializing in building intelligent automation solutions for Iranian small and medium enterprises (SMEs).
@@ -177,63 +176,49 @@ class SmartAIAgent:
 
     def __init__(self) -> None:
         """Initialize SmartAIAgent with configuration"""
-        # Initialize to disabled state
-        self.enabled = False
-        self.llm = None
+        self.enabled: bool = False
+        self.llm: Optional[ChatOpenAI] = None
+        self.model_name: str = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
         
-        # Step 1: Check if explicitly disabled via env var
-        if not SMART_AGENT_ENABLED:
-            logger.info("SmartAIAgent disabled: SMART_AGENT_ENABLED is set to 'false'. /api/chat will use baseline logic only.")
+        self.logger = logging.getLogger("smart_agent")
+        
+        api_key = os.getenv("OPENAI_API_KEY")
+        enabled_flag = get_env_bool("SMART_AGENT_ENABLED", default=True)
+        
+        if not api_key:
+            self.logger.warning(
+                "SmartAIAgent: OPENAI_API_KEY not set. Smart agent will be disabled and baseline will be used."
+            )
             return
         
-        # Step 2: Check if API key is provided
-        if not OPENAI_API_KEY or not OPENAI_API_KEY.strip():
-            logger.info("SmartAIAgent disabled: OPENAI_API_KEY is missing or empty. /api/chat will use baseline logic only.")
+        if not enabled_flag:
+            self.logger.info(
+                "SmartAIAgent: SMART_AGENT_ENABLED is false. Smart agent is disabled by configuration."
+            )
             return
         
-        # Step 3: Check LangChain availability
+        # Check if ChatOpenAI is available
         if ChatOpenAI is None:
-            logger.warning(
+            self.logger.warning(
                 "SmartAIAgent: LangChain ChatOpenAI not available (langchain-openai or langchain not installed). "
-                "Smart agent is DISABLED. /api/chat will use baseline logic only."
+                "Smart agent will be disabled. Install with: pip install langchain-openai"
             )
             return
         
-        # Step 4: Validate model name
-        if not OPENAI_MODEL or not OPENAI_MODEL.strip():
-            logger.warning(
-                "SmartAIAgent: OPENAI_MODEL is empty, using default 'gpt-3.5-turbo'"
-            )
-            model_name = "gpt-3.5-turbo"
-        else:
-            model_name = OPENAI_MODEL.strip()
-        
-        # Step 5: Initialize LangChain chat model
         try:
             self.llm = ChatOpenAI(
-                model=model_name,
-                openai_api_key=OPENAI_API_KEY.strip(),
-                temperature=0.4,
+                model=self.model_name,
+                temperature=0.2,
+                openai_api_key=api_key,
             )
-            
-            # Verify the llm object is valid
-            if self.llm is None:
-                raise ValueError("ChatOpenAI initialization returned None")
-            
-            # If we get here, everything is good
             self.enabled = True
-            logger.info(
-                "SmartAIAgent successfully initialized with model '%s'. "
-                "Smart agent is ENABLED and ready to enhance responses.",
-                model_name
+            self.logger.info(
+                "SmartAIAgent initialized successfully with model %s", self.model_name
             )
-            
         except Exception as e:
-            logger.error(
-                "SmartAIAgent: Failed to initialize ChatOpenAI LLM: %s. "
-                "Smart agent is DISABLED. /api/chat will use baseline logic only.",
+            self.logger.exception(
+                "SmartAIAgent: failed to initialize ChatOpenAI. Smart agent disabled. Error: %s",
                 e,
-                exc_info=True
             )
             self.enabled = False
             self.llm = None
@@ -267,11 +252,11 @@ class SmartAIAgent:
         """
         # Validate agent is enabled and llm is available
         if not self.enabled:
-            logger.debug("SmartAIAgent.generate_smart_answer called but agent is disabled. Returning None to use baseline logic.")
+            self.logger.debug("SmartAIAgent.generate_smart_answer called but agent is disabled. Returning None to use baseline logic.")
             return None
         
         if self.llm is None:
-            logger.warning("SmartAIAgent.generate_smart_answer called but self.llm is None (should not happen if enabled=True). Returning None.")
+            self.logger.warning("SmartAIAgent.generate_smart_answer called but self.llm is None (should not happen if enabled=True). Returning None.")
             return None
 
         try:
@@ -325,11 +310,11 @@ class SmartAIAgent:
                 answer_text = result.text
             else:
                 # Try to get content from message object
-                logger.warning("SmartAIAgent: unexpected result type, trying to extract content. result=%r", type(result))
+                self.logger.warning("SmartAIAgent: unexpected result type, trying to extract content. result=%r", type(result))
                 answer_text = str(result) if result else None
             
             if not answer_text or not answer_text.strip():
-                logger.warning("SmartAIAgent: empty or whitespace-only content from LLM. result=%r", result)
+                self.logger.warning("SmartAIAgent: empty or whitespace-only content from LLM. result=%r", result)
                 return None
 
             # Extract usage info if available
@@ -339,11 +324,11 @@ class SmartAIAgent:
             elif hasattr(result, "usage"):
                 usage = result.usage
 
-            logger.debug("SmartAIAgent: Successfully generated answer using model %s", OPENAI_MODEL)
+            self.logger.debug("SmartAIAgent: Successfully generated answer using model %s", self.model_name)
             
             return {
                 "answer": answer_text.strip(),
-                "model": OPENAI_MODEL,
+                "model": self.model_name,
                 "usage": usage,
                 "success": True,
                 "raw": result,
@@ -351,7 +336,7 @@ class SmartAIAgent:
 
         except Exception as e:
             # Log error but don't crash - return None so baseline logic can be used
-            logger.error(f"SmartAIAgent: error while generating smart answer: {e}. Returning None to use baseline logic.")
+            self.logger.error(f"SmartAIAgent: error while generating smart answer: {e}. Returning None to use baseline logic.")
             return None
 
     async def get_smart_response(
@@ -484,7 +469,7 @@ class SmartAIAgent:
                 "error": None,
             }
         except Exception as e:
-            logger.exception(f"Error reading URL {url}: {e}")
+            self.logger.exception(f"Error reading URL {url}: {e}")
             return {
                 "url": url,
                 "title": "",
