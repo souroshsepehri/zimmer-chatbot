@@ -111,18 +111,28 @@ class ChatOrchestrator:
         final_answer = baseline_answer
         final_source = baseline_result.get("source", "baseline")
 
-        # -------------------------------
-        # Try SmartAIAgent if available
-        # -------------------------------
+        # --------------------------
+        # Try SmartAIAgent
+        # --------------------------
         smart_used = False
 
         if smart_agent.enabled and smart_agent.llm:
-            logger.debug("ChatOrchestrator: Attempting to use SmartAIAgent for message: %s", message[:50])
-            smart_raw = await smart_agent.run(
-                message=message,
-                source=source,
-                baseline_result=baseline_result,
-            )
+            try:
+                smart_raw = await smart_agent.run(
+                    message=message,
+                    source=source,
+                    baseline_result=baseline_result,
+                )
+            except Exception as e:
+                # Hard failure calling SmartAIAgent
+                logger.exception("SmartAIAgent: unexpected error in chat_orchestrator: %s", e)
+                smart_raw = {
+                    "answer": None,
+                    "success": False,
+                    "reason": "exception",
+                    "error": str(e),
+                }
+
             debug_info["smart_agent_raw"] = smart_raw
 
             if smart_raw.get("success") and smart_raw.get("answer"):
@@ -130,43 +140,40 @@ class ChatOrchestrator:
                 final_source = "smart_agent"
                 debug_info["mode"] = "smart_only"
                 smart_used = True
-                logger.info("ChatOrchestrator: Using SmartAIAgent answer (mode=smart_only)")
             else:
                 debug_info["mode"] = "smart_error"
                 logger.info(
-                    "ChatOrchestrator: SmartAIAgent failed or returned empty answer. reason=%s error=%s, falling back to baseline",
+                    "SmartAIAgent failed or returned empty answer. reason=%s error=%s",
                     smart_raw.get("reason"),
                     smart_raw.get("error"),
                 )
         else:
             debug_info["mode"] = "baseline_only"
             debug_info["smart_agent_raw"] = None
-            if not smart_agent.enabled:
-                logger.debug("ChatOrchestrator: SmartAIAgent is disabled, using baseline only")
-            elif not smart_agent.llm:
-                logger.debug("ChatOrchestrator: SmartAIAgent.llm is None, using baseline only")
 
-        # If smart agent didn't handle it, we already have baseline answer
-        if not smart_used and not final_answer:
-            # If baseline also had no answer, keep the previous fallback behavior
-            final_answer = baseline_answer or "متأسفانه پاسخ مناسبی برای این سؤال پیدا نکردم. لطفاً سؤال خود را به شکل دیگری مطرح کنید یا با پشتیبانی تماس بگیرید."
+        # Finally, if neither smart agent nor baseline produced an answer, add the same fallback text as before
+        if not final_answer:
+            final_answer = (
+                baseline_result.get("answer")
+                or "متأسفانه پاسخ مناسبی برای این سؤال پیدا نکردم. لطفاً سؤال خود را به شکل دیگری مطرح کنید یا با پشتیبانی تماس بگیرید."
+            )
 
-        # Build the response using final_answer and debug_info
-        # (keep the same response structure as before)
-        return {
+        # Build the final response using final_answer
+        response: Dict[str, Any] = {
             "answer": final_answer,
             "debug_info": debug_info,
-            "intent": baseline_result.get("intent"),
+            "intent": baseline_result.get("intent", "unknown"),
             "confidence": baseline_result.get("confidence", 0.0),
-            "context": str(baseline_result.get("metadata", {})) if baseline_result.get("metadata") else "{}",
+            "context": str(baseline_result.get("metadata", {})),
             "intent_match": baseline_result.get("success", False),
             "source": final_source,
-            "success": True,
+            "success": bool(final_answer),
             "matched_faq_id": baseline_result.get("matched_faq_id"),
             "question": message,
             "category": baseline_result.get("category"),
-            "score": baseline_result.get("score", 0.0),
+            "score": baseline_result.get("confidence", 0.0),
         }
+        return response
 
 
 # Global instance
