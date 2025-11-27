@@ -1,3 +1,11 @@
+# Load .env file explicitly at the very top (before FastAPI app and before importing smart_agent)
+from dotenv import load_dotenv
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ENV_PATH = os.path.join(BASE_DIR, ".env")
+load_dotenv(ENV_PATH)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
@@ -6,6 +14,9 @@ from pathlib import Path
 from core.db import engine, Base
 from routers import chat, faqs, logs, smart_chat, simple_chat, external_api, debug, smart_agent, api_integration, admin, admin_bot_settings, admin_sites
 from core.config import settings
+
+# Import smart_agent early to ensure it's initialized with the loaded env vars
+from services.smart_agent import smart_agent, router as smart_agent_router
 
 # Import all models to ensure they are registered with SQLAlchemy
 from models import faq, log, tracked_site
@@ -55,7 +66,7 @@ app.include_router(smart_chat.router, prefix="/api", tags=["smart-chat"])
 app.include_router(simple_chat.router, prefix="/api", tags=["simple-chat"])
 app.include_router(external_api.router, prefix="/api", tags=["external-api"])
 app.include_router(debug.router, prefix="/api", tags=["debug"])
-app.include_router(smart_agent.router, prefix="/api", tags=["smart-agent"])
+app.include_router(smart_agent_router, prefix="/api", tags=["smart-agent"])
 app.include_router(api_integration.router, prefix="/api", tags=["api-integration"])
 app.include_router(admin.router, tags=["admin"])
 app.include_router(admin_bot_settings.router)
