@@ -186,14 +186,22 @@ router = APIRouter()
 
 
 @router.get("/smart-agent/status")
-async def smart_agent_status() -> Dict[str, Any]:
-    """Simple status endpoint for debugging from curl."""
-    return {
-        "enabled": smart_agent.enabled,
-        "has_llm": bool(smart_agent.llm),
-        "env": {
-            "SMART_AGENT_ENABLED": os.getenv("SMART_AGENT_ENABLED"),
-            "OPENAI_API_KEY_PRESENT": bool(os.getenv("OPENAI_API_KEY")),
-            "OPENAI_MODEL": os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
-        },
+async def smart_agent_status():
+    """
+    Lightweight status endpoint for SmartAIAgent.
+    Used only for debugging / health checks.
+    """
+    env_info = {
+        "SMART_AGENT_ENABLED": os.getenv("SMART_AGENT_ENABLED"),
+        "OPENAI_API_KEY_PRESENT": bool(os.getenv("OPENAI_API_KEY")),
+        "OPENAI_MODEL": os.getenv("OPENAI_MODEL"),
     }
+    return {
+        "enabled": getattr(smart_agent, "enabled", False),
+        "has_llm": bool(getattr(smart_agent, "llm", None)),
+        "env": env_info,
+    }
+
+
+# Public exports
+__all__ = ["smart_agent", "router", "SmartAIAgent"]
