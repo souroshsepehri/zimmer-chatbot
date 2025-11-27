@@ -5,8 +5,11 @@ Orchestrates between SmartAIAgent and baseline answering_agent,
 providing intelligent routing and fallback mechanisms.
 """
 
+import json
 import logging
 from typing import Any, Dict, Optional
+
+from langchain_core.messages import SystemMessage, HumanMessage
 
 from services.smart_agent import smart_agent
 from services.answering_agent import answer_user_query
@@ -118,11 +121,31 @@ class ChatOrchestrator:
 
         if smart_agent.enabled and smart_agent.llm:
             try:
-                smart_raw = await smart_agent.run(
-                    message=message,
-                    source=source,
-                    baseline_result=baseline_result,
+                # Safe JSON-serializable context
+                context_payload: Dict[str, Any] = baseline_result or {}
+                try:
+                    context_json = json.dumps(context_payload, ensure_ascii=False)
+                except Exception:
+                    context_json = "{}"
+
+                system_text = (
+                    "You are the intelligent website assistant for Zimmer AI Automation (Zimmerman).\n"
+                    "You ALWAYS answer in fluent Persian (Farsi).\n"
+                    "Explain clearly what Zimmer does: building custom AI automations for businesses, "
+                    "multi-channel chatbots (Telegram, WhatsApp, Instagram), travel agency AI, "
+                    "online shop agents, debt collector automation, SEO content agent, etc.\n"
+                    "If the user asks about Zimmer's services, be specific, structured and helpful "
+                    "even if the FAQ database is empty.\n"
+                    "If context about FAQ / DB results is provided, you MAY use it but you are NOT limited to it.\n\n"
+                    f"Additional context (may be from DB or previous logic) as JSON: {context_json}"
                 )
+
+                messages = [
+                    SystemMessage(content=system_text),
+                    HumanMessage(content=message),
+                ]
+
+                smart_raw = await smart_agent.run(messages)
             except Exception as e:
                 # Hard failure calling SmartAIAgent
                 logger.exception("SmartAIAgent: unexpected error in chat_orchestrator: %s", e)
