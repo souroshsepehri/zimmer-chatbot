@@ -91,7 +91,7 @@ class ChatOrchestrator:
         mode: Optional[str] = None
 
         # ۲) اگر SmartAIAgent فعال است، سعی کن LLM را هم اجرا کنی
-        if getattr(smart_agent, "enabled", False) and smart_agent.llm is not None:
+        if getattr(smart_agent, "enabled", False):
             mode = "auto"
 
             # context برای سیستم
