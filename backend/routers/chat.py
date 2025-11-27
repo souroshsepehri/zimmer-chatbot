@@ -42,6 +42,7 @@ async def chat(
         context = request.context or {}
         context.update({
             "session_id": session_id or context.get("session_id"),
+            "source": request.source or context.get("source") or "unknown",
             "debug": request.debug,
             "category_filter": request.category_filter,
         })

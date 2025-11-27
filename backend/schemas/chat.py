@@ -5,6 +5,7 @@ from datetime import datetime
 
 class ChatRequest(BaseModel):
     message: str
+    source: Optional[str] = None  # Source identifier (e.g., widget, public-smart-test)
     debug: Optional[bool] = False
     category_filter: Optional[str] = None
     mode: Optional[str] = "auto"  # "auto", "smart_agent", or "baseline"

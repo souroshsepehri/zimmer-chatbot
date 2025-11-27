@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 from services.smart_agent import smart_agent
 from services.answering_agent import answer_user_query
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("chat_orchestrator")
 
 
 class ChatOrchestrator:
@@ -54,17 +54,13 @@ class ChatOrchestrator:
             - debug_info.mode: "smart_agent", "baseline", or "baseline_exception"
         """
         context = context or {}
-        page_url = context.get("page_url")
         session_id = context.get("session_id")
-        history = context.get("history") or []
-
-        # Initialize smart_result to None (will be set later if smart agent runs)
-        smart_result = None
+        source = context.get("source") or "unknown"
 
         # Step 1: Run baseline engine first (FAQ/DB lookup)
-        baseline = None
+        baseline_result = None
         try:
-            baseline = answer_user_query(
+            baseline_result = answer_user_query(
                 user_id=user_id,
                 message=message,
                 context={
@@ -90,136 +86,86 @@ class ChatOrchestrator:
                 "category": None,
                 "score": 0.0,
                 "debug_info": {
-                    "mode": "baseline_only",  # Baseline failed, smart agent not attempted
+                    "mode": "baseline_only",
+                    "baseline_raw": None,
                     "smart_agent_raw": None,
+                    "matched_ids": [],
+                    "metadata": {},
                     "baseline_error": str(e),
                 },
             }
 
-        # Extract baseline data
-        baseline_answer = baseline.get("answer", "")
-        baseline_success = baseline.get("success", False)
-        baseline_confidence = baseline.get("confidence", 0.0)
-        baseline_matched_ids = baseline.get("matched_ids", [])
-        baseline_has_match = baseline_success and len(baseline_matched_ids) > 0
+        # Extract baseline answer
+        baseline_answer = baseline_result.get("answer", "")
 
-        # Step 2: Try SmartAIAgent if enabled (unless mode is "baseline" or "baseline_only")
-        if mode != "baseline" and mode != "baseline_only" and smart_agent.enabled:
-            try:
-                # Build baseline_result dict to pass to smart_agent.run()
-                baseline_result_dict = {
-                    "answer": baseline_answer,
-                    "intent": baseline.get("intent", "unknown"),
-                    "confidence": baseline_confidence,
-                    "source": baseline.get("source", "unknown"),
-                    "success": baseline_success,
-                    "matched_ids": baseline_matched_ids,
-                    "metadata": baseline.get("metadata", {}),
-                }
-                
-                # Call smart_agent.run() with all parameters
-                smart_result = await smart_agent.run(
-                    message=message,
-                    baseline_result=baseline_result_dict,
-                    session_id=session_id,
-                    page_url=page_url,
-                    history=history,
-                )
-                logger.debug(f"SmartAIAgent.run() returned: success={smart_result.get('success')}")
-            except Exception as e:
-                # Log the exception but don't crash
-                logger.exception("Smart agent error", exc_info=e)
-                # Set smart_result to indicate error
-                smart_result = {
-                    "answer": None,
-                    "success": False,
-                    "reason": "exception",
-                    "error": str(e),
-                }
-        elif mode != "baseline" and mode != "baseline_only":
-            logger.debug("SmartAIAgent is disabled (missing API key or SMART_AGENT_ENABLED=false). Will use baseline answer.")
-            # smart_result remains None to indicate smart agent was not attempted
-
-        # Step 3: Decision logic - choose between smart agent and baseline
-        # Use smart agent if:
-        #   - smart_result is not None AND success is True AND has a valid non-empty answer
-        use_smart_agent = (
-            smart_result is not None
-            and smart_result.get("success") is True
-            and smart_result.get("answer")
-            and isinstance(smart_result.get("answer"), str)
-            and smart_result.get("answer", "").strip()
-        )
-
-        # Determine final mode and final answer
-        if use_smart_agent:
-            # Smart agent succeeded - use its answer
-            final_answer = smart_result.get("answer", "").strip()
-            final_mode = "auto" if mode == "auto" else "smart_only"
-            logger.info(
-                "Smart agent used",
-                extra={
-                    "mode": final_mode,
-                    "message": message[:100],  # First 100 chars for context
-                }
-            )
-        else:
-            # Use baseline answer
-            final_answer = baseline_answer
-            # Determine mode based on whether smart agent was attempted
-            if smart_result is not None:
-                # Smart agent was attempted but failed
-                final_mode = "smart_error"
-                reason = smart_result.get("reason", "unknown")
-                logger.warning(
-                    "SmartAIAgent failed, using baseline fallback",
-                    extra={
-                        "reason": reason,
-                        "smart_agent_success": smart_result.get("success"),
-                        "error": smart_result.get("error"),
-                    }
-                )
-            else:
-                # Smart agent was not attempted (disabled or mode is baseline)
-                final_mode = "baseline_only"
-                logger.debug("Using baseline answer (SmartAIAgent not available or disabled)")
-
-        # Build smart_agent_raw with proper structure
-        # Ensure it always has: { answer, success, reason, error? } or null
-        if smart_result is not None:
-            smart_agent_raw = {
-                "answer": smart_result.get("answer"),
-                "success": smart_result.get("success", False),
-                "reason": smart_result.get("reason", "unknown"),
-            }
-            if smart_result.get("error"):
-                smart_agent_raw["error"] = smart_result.get("error")
-        else:
-            smart_agent_raw = None
-
-        # Build debug_info with required structure
-        debug_info = {
-            "mode": final_mode,  # "auto", "baseline_only", "smart_only", or "smart_error"
-            "baseline_raw": baseline,
-            "smart_agent_raw": smart_agent_raw,  # None if smart agent didn't run, dict if it did
-            "matched_ids": baseline.get("matched_ids", []),
-            "metadata": baseline.get("metadata", {}),
+        # Initialize debug_info with baseline data
+        debug_info: Dict[str, Any] = {
+            "baseline_raw": baseline_result,
+            "mode": None,
+            "matched_ids": baseline_result.get("matched_ids", []),
+            "metadata": baseline_result.get("metadata", {}),
+            "smart_agent_raw": None,
         }
 
-        # Return final response with exact structure as specified
+        # Start with baseline answer and source
+        final_answer = baseline_answer
+        final_source = baseline_result.get("source", "baseline")
+
+        # -------------------------------
+        # Try SmartAIAgent if available
+        # -------------------------------
+        smart_used = False
+
+        if smart_agent.enabled and smart_agent.llm:
+            logger.debug("ChatOrchestrator: Attempting to use SmartAIAgent for message: %s", message[:50])
+            smart_raw = await smart_agent.run(
+                message=message,
+                source=source,
+                baseline_result=baseline_result,
+            )
+            debug_info["smart_agent_raw"] = smart_raw
+
+            if smart_raw.get("success") and smart_raw.get("answer"):
+                final_answer = smart_raw["answer"]
+                final_source = "smart_agent"
+                debug_info["mode"] = "smart_only"
+                smart_used = True
+                logger.info("ChatOrchestrator: Using SmartAIAgent answer (mode=smart_only)")
+            else:
+                debug_info["mode"] = "smart_error"
+                logger.info(
+                    "ChatOrchestrator: SmartAIAgent failed or returned empty answer. reason=%s error=%s, falling back to baseline",
+                    smart_raw.get("reason"),
+                    smart_raw.get("error"),
+                )
+        else:
+            debug_info["mode"] = "baseline_only"
+            debug_info["smart_agent_raw"] = None
+            if not smart_agent.enabled:
+                logger.debug("ChatOrchestrator: SmartAIAgent is disabled, using baseline only")
+            elif not smart_agent.llm:
+                logger.debug("ChatOrchestrator: SmartAIAgent.llm is None, using baseline only")
+
+        # If smart agent didn't handle it, we already have baseline answer
+        if not smart_used and not final_answer:
+            # If baseline also had no answer, keep the previous fallback behavior
+            final_answer = baseline_answer or "متأسفانه پاسخ مناسبی برای این سؤال پیدا نکردم. لطفاً سؤال خود را به شکل دیگری مطرح کنید یا با پشتیبانی تماس بگیرید."
+
+        # Build the response using final_answer and debug_info
+        # (keep the same response structure as before)
         return {
             "answer": final_answer,
             "debug_info": debug_info,
-            "intent": baseline.get("intent"),
-            "confidence": baseline.get("confidence", 0.0),
-            "context": str(baseline.get("metadata", {})) if baseline.get("metadata") else "{}",
-            "intent_match": baseline.get("success", False),
-            "source": final_mode,
+            "intent": baseline_result.get("intent"),
+            "confidence": baseline_result.get("confidence", 0.0),
+            "context": str(baseline_result.get("metadata", {})) if baseline_result.get("metadata") else "{}",
+            "intent_match": baseline_result.get("success", False),
+            "source": final_source,
             "success": True,
-            "matched_faq_id": baseline.get("matched_faq_id"),
+            "matched_faq_id": baseline_result.get("matched_faq_id"),
             "question": message,
-            "category": baseline.get("category"),
-            "score": baseline.get("score", 0.0),
+            "category": baseline_result.get("category"),
+            "score": baseline_result.get("score", 0.0),
         }
 
 
