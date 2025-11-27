@@ -189,7 +189,7 @@ router = APIRouter()
 async def smart_agent_status():
     """
     Lightweight status endpoint for SmartAIAgent.
-    Used only for debugging / health checks.
+    Used for debugging / health checks.
     """
     env_info = {
         "SMART_AGENT_ENABLED": os.getenv("SMART_AGENT_ENABLED"),
@@ -204,4 +204,4 @@ async def smart_agent_status():
 
 
 # Public exports
-__all__ = ["smart_agent", "router", "SmartAIAgent"]
+__all__ = ["SmartAIAgent", "smart_agent", "router"]
