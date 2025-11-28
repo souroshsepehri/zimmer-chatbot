@@ -44,12 +44,34 @@ class SmartAIAgent:
             converted.append({"role": role, "content": str(msg.content)})
         return converted
 
-    async def run(self, messages: List[BaseMessage]) -> Dict[str, Any]:
+    async def run(
+        self,
+        message: str | None = None,
+        *,
+        context: dict | None = None,
+        debug: bool = False,
+        question: str | None = None,
+    ) -> dict:
         """
-        Main entry point used by chat_orchestrator.
+        Main entry point for SmartAIAgent.
 
-        Returns a dict with keys: answer, success, reason, error
+        Args:
+            message: The user's message/query (primary parameter)
+            context: Optional context dictionary for additional information
+            debug: Optional debug flag
+            question: Deprecated parameter for backwards compatibility. If message is None and question is provided, message will be set to question.
+
+        Returns:
+            Dict with keys: answer, success, reason, error
         """
+        # Handle backwards compatibility: if message is None and question is not None, set message = question
+        if message is None and question is not None:
+            message = question
+
+        # Validate that message is provided
+        if message is None:
+            raise ValueError("SmartAIAgent.run: `message` is required")
+
         if not self.enabled:
             return {
                 "answer": None,
@@ -57,6 +79,26 @@ class SmartAIAgent:
                 "reason": "disabled",
                 "error": "SmartAIAgent is disabled (no OPENAI_API_KEY)",
             }
+
+        # Build system prompt from context if provided
+        system_prompt = (
+            "You are the intelligent website assistant for Zimmer AI Automation (Zimmerman). "
+            "You always answer in fluent Persian (Farsi). Explain clearly what Zimmer does: "
+            "building custom AI automations for businesses, multi-channel chatbots (Telegram, WhatsApp, Instagram), "
+            "travel agency AI, online shop agents, debt collector automation, SEO content agent, etc. "
+            "If user asks about Zimmer's services, be specific and helpful even if the FAQ DB is empty. "
+            "If context about FAQ / DB results is provided, you MAY use it but you are not limited to it."
+        )
+        
+        if context:
+            context_str = str(context)
+            system_prompt += f"\n\nAdditional context for you (may be from DB or previous logic): {context_str}"
+
+        # Convert string message to message format
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=message),
+        ]
 
         payload_messages = self._convert_messages(messages)
 
