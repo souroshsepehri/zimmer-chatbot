@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from core.db import engine, Base
 from routers import chat, faqs, logs
 from core.config import settings
@@ -42,18 +42,204 @@ if frontend_out.exists():
     app.mount("/static", StaticFiles(directory=str(frontend_out)), name="static")
     print("✅ Frontend static files mounted")
 
+CHATBOT_HTML = """
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>بات هوشمند زیمر</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .chatbot-container {
+            width: 90%;
+            max-width: 800px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 { font-size: 2rem; margin-bottom: 10px; }
+        .header p { opacity: 0.9; }
+        .chat-messages {
+            height: 400px;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+        }
+        .message.user { justify-content: flex-end; }
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+        }
+        .message.bot .message-content {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+        .message.user .message-content {
+            background: #667eea;
+            color: white;
+        }
+        .input-container {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 10px;
+        }
+        .input-field {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        .input-field:focus { border-color: #667eea; }
+        .send-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        .send-button:hover { background: #5a6fd8; }
+        .send-button:disabled { background: #ccc; cursor: not-allowed; }
+        .loading { display: none; text-align: center; padding: 10px; color: #666; }
+        .error { background: #ffebee; color: #c62828; padding: 10px; margin: 10px 20px; border-radius: 8px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="chatbot-container">
+        <div class="header">
+            <h1>بات هوشمند زیمر</h1>
+            <p>دستیار هوشمند فارسی برای پاسخ به سؤالات شما</p>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+            <div class="message bot">
+                <div class="message-content">
+                    سلام وقت بخیر! ربات هوشمند زیمر هستم. چطور می‌تونم کمکتون کنم؟
+                </div>
+            </div>
+        </div>
+        <div class="loading" id="loading">در حال پردازش...</div>
+        <div class="input-container">
+            <input type="text" id="messageInput" class="input-field" placeholder="پیام خود را بنویسید..." />
+            <button id="sendButton" class="send-button">ارسال</button>
+        </div>
+    </div>
+    <script>
+        const chatMessages = document.getElementById('chatMessages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const loading = document.getElementById('loading');
+        const API_BASE = window.location.origin + '/api';
+        
+        function addMessage(text, isUser) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.textContent = text;
+            messageDiv.appendChild(contentDiv);
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        function showLoading() {
+            loading.style.display = 'block';
+            sendButton.disabled = true;
+        }
+        
+        function hideLoading() {
+            loading.style.display = 'none';
+            sendButton.disabled = false;
+        }
+        
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = message;
+            chatMessages.appendChild(errorDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+            
+            addMessage(message, true);
+            messageInput.value = '';
+            showLoading();
+            
+            try {
+                const response = await fetch(`${API_BASE}/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                addMessage(data.answer || 'پاسخ دریافت شد', false);
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showError('خطا در ارتباط با سرور. لطفاً دوباره تلاش کنید.');
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        sendButton.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+        messageInput.focus();
+    </script>
+</body>
+</html>
+"""
+
 @app.get("/")
 async def root():
-    """Serve the frontend or show API message"""
+    """
+    Serve the built frontend if available, otherwise serve the HTML chatbot UI.
+    """
     index_file = frontend_out / "index.html"
     if index_file.exists():
         return FileResponse(str(index_file))
-    else:
-        return {
-            "message": "Persian Chatbot API is running", 
-            "frontend": "Not available - build frontend first",
-            "api_docs": "/docs"
-        }
+
+    # Fallback: simple chatbot HTML UI (same as app.py root)
+    return HTMLResponse(CHATBOT_HTML)
 
 @app.get("/{path:path}")
 async def serve_frontend_routes(path: str):
