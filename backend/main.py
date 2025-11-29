@@ -335,3 +335,4 @@ if __name__ == "__main__":
         print(f"ℹ️  Using port {port} instead of {original_port}")
     
     uvicorn.run(app, host=host, port=port)
+

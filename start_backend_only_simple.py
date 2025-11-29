@@ -24,7 +24,7 @@ def main():
     
     # Import the app
     try:
-        from app import app
+        from main import app
         print("✅ App imported successfully")
     except ImportError as e:
         print(f"❌ Import error: {e}")

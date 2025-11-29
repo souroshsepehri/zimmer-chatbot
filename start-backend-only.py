@@ -31,7 +31,7 @@ def main():
     
     # Import and start the app
     try:
-        from app import app
+        from main import app
         print("✅ Backend app loaded successfully")
     except ImportError as e:
         print(f"❌ Failed to import app: {e}")

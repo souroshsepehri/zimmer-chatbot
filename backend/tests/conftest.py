@@ -21,7 +21,7 @@ from core.config import settings
 from models import faq, log
 
 # Import app last
-from app import app
+from main import app
 
 
 @pytest.fixture(scope="function")

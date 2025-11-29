@@ -36,12 +36,12 @@ def main():
             from app_unified import app
             print("✅ Using unified app (backend + frontend)")
         except ImportError:
-            from app import app
+            from main import app
             print("✅ Using backend app (frontend will be served separately)")
     else:
         print("⚠️ Frontend not found, serving backend only")
         os.chdir("backend")
-        from app import app
+        from main import app
     
     # Start the server
     import uvicorn

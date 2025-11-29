@@ -25,4 +25,4 @@ echo.
 echo Press Ctrl+C to stop the server
 echo.
 
-python -m uvicorn app:app --host 127.0.0.1 --port 8002 --reload
+python -m uvicorn main:app --host 127.0.0.1 --port 8002 --reload
