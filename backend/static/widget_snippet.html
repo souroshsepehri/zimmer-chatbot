@@ -1,0 +1,16 @@
+<!-- Zimmer Chatbot Widget -->
+<div id="zimmer-chatbot-root"></div>
+<script>
+  (function () {
+    window.ZIMMER_CHATBOT_CONFIG = {
+      apiBaseUrl: "https://chatbot.zimmerai.com",
+      siteId: window.location.host
+    };
+
+    var script = document.createElement("script");
+    script.src = "https://chatbot.zimmerai.com/static/chatbot-widget.js";
+    script.async = true;
+    document.head.appendChild(script);
+  })();
+</script>
+

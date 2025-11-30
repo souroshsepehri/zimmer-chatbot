@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # Vector Store
     vectorstore_path: str = "./vectorstore"
     
+    # Smart Agent Configuration
+    smart_agent_enabled: bool = True
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,

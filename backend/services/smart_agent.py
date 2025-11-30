@@ -1,7 +1,7 @@
 import os
 import logging
 import asyncio
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 import requests
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
@@ -48,18 +48,28 @@ class SmartAIAgent:
         self,
         message: str | None = None,
         *,
-        context: dict | None = None,
+        baseline_result: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
+        page_url: Optional[str] = None,
+        history: Optional[List[Dict[str, Any]]] = None,
+        context: Optional[Dict[str, Any]] = None,
         debug: bool = False,
         question: str | None = None,
+        **kwargs,
     ) -> dict:
         """
         Main entry point for SmartAIAgent.
 
         Args:
             message: The user's message/query (primary parameter)
+            baseline_result: Optional baseline result from answering_agent
+            session_id: Optional session identifier
+            page_url: Optional page URL for context
+            history: Optional chat history
             context: Optional context dictionary for additional information
             debug: Optional debug flag
             question: Deprecated parameter for backwards compatibility. If message is None and question is provided, message will be set to question.
+            **kwargs: Additional keyword arguments
 
         Returns:
             Dict with keys: answer, success, reason, error
@@ -80,27 +90,57 @@ class SmartAIAgent:
                 "error": "SmartAIAgent is disabled (no OPENAI_API_KEY)",
             }
 
-        # Build system prompt from context if provided
+        # Strict system prompt - only use DB/site context
         system_prompt = (
-            "You are the intelligent website assistant for Zimmer AI Automation (Zimmerman). "
-            "You always answer in fluent Persian (Farsi). Explain clearly what Zimmer does: "
-            "building custom AI automations for businesses, multi-channel chatbots (Telegram, WhatsApp, Instagram), "
-            "travel agency AI, online shop agents, debt collector automation, SEO content agent, etc. "
-            "If user asks about Zimmer's services, be specific and helpful even if the FAQ DB is empty. "
-            "If context about FAQ / DB results is provided, you MAY use it but you are not limited to it."
+            "تو فقط دستیار هوشمند همین وب‌سایت و همین سیستم هستی.\n"
+            "منابع تو فقط این‌ها هستند:\n"
+            "- پاسخ اولیه‌ای که از موتور اصلی بات (دیتابیس، FAQ، جستجو) گرفته شده است.\n"
+            "- متن‌های زمینه و اطلاعاتی که به‌عنوان کانتکست از صفحات سایت و پایگاه داده به تو داده می‌شود.\n\n"
+            "قوانین مهم:\n"
+            "1) فقط بر اساس همین اطلاعات پاسخ بده. از هیچ دانش عمومی دیگری استفاده نکن.\n"
+            "2) اگر سؤال کاربر ربطی به این سایت، خدمات آن یا داده‌های موجود ندارد، صریحاً بگو که من فقط به سوالات مرتبط با همین سایت و اطلاعات ثبت‌شده جواب می‌دهم.\n"
+            "3) اگر اطلاعات موجود ناقص است یا مطمئن نیستی، حدس نزن؛ شفاف بگو که اطلاعات کافی ندارم.\n"
+            "4) همیشه به زبان فارسی روان، کوتاه و شفاف جواب بده."
         )
-        
-        if context:
-            context_str = str(context)
-            system_prompt += f"\n\nAdditional context for you (may be from DB or previous logic): {context_str}"
 
-        # Convert string message to message format
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=message),
-        ]
+        # Build messages list
+        messages_list = []
+        messages_list.append({"role": "system", "content": system_prompt})
 
-        payload_messages = self._convert_messages(messages)
+        # Add baseline result as context if available
+        if baseline_result and isinstance(baseline_result.get("answer"), str):
+            messages_list.append({
+                "role": "system",
+                "content": f"پاسخ اولیه بر اساس دیتابیس/FAQ:\n{baseline_result['answer']}"
+            })
+
+        # Extract context_text from context or kwargs
+        context_text = None
+        if context and isinstance(context.get("text"), str):
+            context_text = context["text"]
+        elif "context_text" in kwargs and isinstance(kwargs["context_text"], str):
+            context_text = kwargs["context_text"]
+
+        # Add site/DB context if available
+        if context_text:
+            messages_list.append({
+                "role": "system",
+                "content": "این متن‌ها از سایت/دیتابیس به‌عنوان زمینه اضافه شده‌اند:\n" + context_text
+            })
+
+        # Add chat history if available
+        if history:
+            for hist_item in history:
+                if isinstance(hist_item, dict):
+                    role = hist_item.get("role", "user")
+                    content = hist_item.get("content") or hist_item.get("text", "")
+                    if content:
+                        messages_list.append({"role": role, "content": content})
+
+        # Add final user message
+        messages_list.append({"role": "user", "content": message})
+
+        payload_messages = messages_list
 
         async def _async_call() -> Dict[str, Any]:
             loop = asyncio.get_running_loop()

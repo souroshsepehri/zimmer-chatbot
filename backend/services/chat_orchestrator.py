@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional
 from services.smart_agent import smart_agent
 from langchain_core.messages import SystemMessage, HumanMessage
 from services.answering_agent import answer_user_query
+from core.config import settings
 
 logger = logging.getLogger("services.chat_orchestrator")
 
@@ -90,51 +91,39 @@ class ChatOrchestrator:
         smart_result: Optional[Dict[str, Any]] = None
         mode: Optional[str] = None
 
-        # ۲) اگر SmartAIAgent فعال است، سعی کن LLM را هم اجرا کنی
-        if getattr(smart_agent, "enabled", False):
+        # ۲) Gate SmartAIAgent: only call if baseline result is based on real data, not fallback
+        use_smart_agent = (
+            settings.smart_agent_enabled
+            and getattr(smart_agent, "enabled", False)
+            and baseline_result is not None
+            and baseline_result.get("success") is True
+            and baseline_result.get("source") not in ("fallback", "unknown", None)
+        )
+
+        if use_smart_agent:
             mode = "auto"
-
-            # context برای سیستم
-            context_dict = {
-                "baseline_answer": baseline_result.get("answer"),
-                "intent": baseline_result.get("intent"),
-                "confidence": baseline_result.get("confidence"),
-                "source": baseline_result.get("source"),
-                "success": baseline_result.get("success"),
-                "matched_ids": baseline_result.get("matched_ids", []),
-                "metadata": baseline_result.get("metadata", {}),
-                "session_id": session_id or "default_session",
-                "page_url": page_url,
-                "history": [],
-            }
-
-            system_prompt = (
-                "You are the intelligent website assistant for Zimmer AI Automation (Zimmerman). "
-                "You always answer in fluent Persian (Farsi). Explain clearly what Zimmer does: "
-                "building custom AI automations for businesses, multi-channel chatbots (Telegram, WhatsApp, Instagram), "
-                "travel agency AI, online shop agents, debt collector automation, SEO content agent, etc. "
-                "If user asks about Zimmer's services, be specific and helpful even if the FAQ DB is empty. "
-                "If context about FAQ / DB results is provided, you MAY use it but you are not limited to it.\n\n"
-                f"Additional context for you (may be from DB or previous logic): {context_dict}"
-            )
-
-            messages = [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=message),
-            ]
-
+            
+            # Extract history from context if available
+            history = context.get("history", []) if context else []
+            
             try:
-                smart_result = await smart_agent.run(messages)
-                # smart_result باید ساختاری شبیه این داشته باشد:
-                # { "answer": str | None, "success": bool, "reason": str, "error": str | None }
+                smart_result = await smart_agent.run(
+                    message=message,
+                    baseline_result=baseline_result,
+                    session_id=session_id,
+                    page_url=page_url,
+                    history=history,
+                    context=context,
+                )
+                logger.debug("SmartAIAgent.run() returned: success=%s", smart_result.get("success"))
 
-                if smart_result.get("success") and smart_result.get("answer"):
+                if smart_result.get("success"):
                     final_answer = smart_result["answer"]
-                    final_source = f"smart:{baseline_result.get('source', 'baseline')}"
-                    final_success = True
+                    final_source = "smart_agent"
                 else:
-                    # LLM جواب نداده → fallback به baseline
-                    mode = "baseline_exception"
+                    logger.info("SmartAIAgent failed or returned unsuccessfully. Using baseline answer.")
+                    final_answer = baseline_result["answer"]
+                    final_source = baseline_result.get("source", "baseline")
             except Exception as e:
                 logger.exception("ChatOrchestrator: error when calling SmartAIAgent: %s", e)
                 smart_result = {
@@ -143,8 +132,12 @@ class ChatOrchestrator:
                     "reason": "llm_error",
                     "error": str(e),
                 }
+                logger.info("SmartAIAgent exception. Using baseline answer.")
+                final_answer = baseline_result["answer"]
+                final_source = baseline_result.get("source", "baseline")
                 mode = "baseline_exception"
         else:
+            logger.info("Skipping SmartAIAgent: no reliable baseline/context. Using baseline answer only.")
             mode = "baseline_only"
 
         debug_info = {

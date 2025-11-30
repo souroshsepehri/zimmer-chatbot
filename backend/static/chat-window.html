@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Window</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            overflow: hidden;
+        }
+        
+        .chatbot-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        
+        .chatbot-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .chatbot-subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .chatbot-messages {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            background: #f8f9fa;
+        }
+        
+        .chatbot-message {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+        }
+        
+        .chatbot-message.user {
+            justify-content: flex-end;
+        }
+        
+        .message-content {
+            max-width: 80%;
+            padding: 10px 15px;
+            border-radius: 18px;
+            word-wrap: break-word;
+            font-size: 14px;
+        }
+        
+        .chatbot-message.bot .message-content {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+        
+        .chatbot-message.user .message-content {
+            background: #667eea;
+            color: white;
+        }
+        
+        .chatbot-input-container {
+            padding: 15px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+        
+        .chatbot-input-container input {
+            flex: 1;
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            outline: none;
+            font-size: 14px;
+        }
+        
+        .chatbot-input-container input:focus {
+            border-color: #667eea;
+        }
+        
+        .chatbot-input-container button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        
+        .chatbot-input-container button:hover {
+            background: #5a6fd8;
+        }
+        
+        .chatbot-input-container button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 10px;
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="chatbot-header">
+        <div class="chatbot-title">بات هوشمند</div>
+        <div class="chatbot-subtitle">چطور می‌تونم کمکتون کنم؟</div>
+    </div>
+    <div class="chatbot-messages" id="chatbot-messages">
+        <div class="chatbot-message bot">
+            <div class="message-content">
+                سلام! من بات هوشمند هستم. چطور می‌تونم کمکتون کنم؟
+            </div>
+        </div>
+    </div>
+    <div class="chatbot-input-container">
+        <input type="text" id="chatbot-input" placeholder="پیام خود را بنویسید..." />
+        <button id="chatbot-send">ارسال</button>
+    </div>
+    
+    <script>
+        (function() {
+            // Get API base URL from parent window config or use default
+            var apiBaseUrl = "https://chatbot.zimmerai.com";
+            try {
+                if (window.parent && window.parent.ZIMMER_CHATBOT_CONFIG) {
+                    apiBaseUrl = window.parent.ZIMMER_CHATBOT_CONFIG.apiBaseUrl || apiBaseUrl;
+                }
+            } catch (e) {
+                // Cross-origin, use default
+            }
+            
+            var apiBase = apiBaseUrl + "/api";
+            var messagesContainer = document.getElementById('chatbot-messages');
+            var input = document.getElementById('chatbot-input');
+            var sendButton = document.getElementById('chatbot-send');
+            
+            function addMessage(text, sender) {
+                var messageDiv = document.createElement('div');
+                messageDiv.className = 'chatbot-message ' + sender;
+                
+                var contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                contentDiv.textContent = text;
+                
+                messageDiv.appendChild(contentDiv);
+                messagesContainer.appendChild(messageDiv);
+                
+                // Scroll to bottom
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
+            
+            function addLoadingMessage() {
+                var loadingDiv = document.createElement('div');
+                loadingDiv.className = 'loading';
+                loadingDiv.id = 'chatbot-loading';
+                loadingDiv.textContent = 'در حال پردازش...';
+                
+                messagesContainer.appendChild(loadingDiv);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
+            
+            function removeLoadingMessage() {
+                var loadingDiv = document.getElementById('chatbot-loading');
+                if (loadingDiv) {
+                    loadingDiv.remove();
+                }
+            }
+            
+            function sendMessage() {
+                var message = input.value.trim();
+                if (!message) return;
+                
+                // Add user message
+                addMessage(message, 'user');
+                input.value = '';
+                
+                // Disable input and show loading
+                input.disabled = true;
+                sendButton.disabled = true;
+                addLoadingMessage();
+                
+                // Send to API
+                fetch(apiBase + '/dual-answer', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        question: message,
+                        use_primary_only: false,
+                        use_secondary_only: false
+                    })
+                })
+                .then(function(response) {
+                    return response.json();
+                })
+                .then(function(data) {
+                    // Remove loading message
+                    removeLoadingMessage();
+                    
+                    // Add bot response
+                    addMessage(data.answer || 'متأسفانه پاسخ مناسبی پیدا نکردم.', 'bot');
+                })
+                .catch(function(error) {
+                    console.error('Error:', error);
+                    removeLoadingMessage();
+                    addMessage('خطا در ارتباط با سرور. لطفاً دوباره تلاش کنید.', 'bot');
+                })
+                .finally(function() {
+                    // Re-enable input
+                    input.disabled = false;
+                    sendButton.disabled = false;
+                    input.focus();
+                });
+            }
+            
+            // Event listeners
+            sendButton.addEventListener('click', sendMessage);
+            input.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+            
+            // Focus input on load
+            input.focus();
+        })();
+    </script>
+</body>
+</html>
+
