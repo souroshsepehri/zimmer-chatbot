@@ -33,6 +33,7 @@ class ChatOrchestrator:
         page_url: Optional[str] = None,
         context: Optional[Dict[str, Any]] = None,
         user_id: Optional[str] = None,
+        site_host: Optional[str] = None,  # NEW: explicit site_host parameter
         db: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
@@ -45,18 +46,64 @@ class ChatOrchestrator:
         session_id = context.get("session_id")
         source = source or context.get("source") or "unknown"
         page_url = page_url or context.get("page_url")
+        tracked_site = context.get("tracked_site")
+        tracked_site_id = context.get("tracked_site_id")
+        
+        # Use explicit site_host parameter if provided, otherwise fall back to context
+        effective_site_host = site_host or context.get("site_host")
+
+        # If site_host was provided but no active site found, return site-specific fallback
+        if effective_site_host and not tracked_site:
+            logger.info(f"No active tracked site found for host: {effective_site_host}")
+            return {
+                "answer": "برای این سؤال در حال حاضر هیچ پاسخی در داده‌های ثبت‌شده ندارم. لطفاً سؤال را به شکل دیگری مطرح کنید یا با پشتیبانی تماس بگیرید.",
+                "source": "fallback",
+                "success": False,
+                "intent": "unknown",
+                "confidence": 0.0,
+                "context": None,
+                "intent_match": False,
+                "matched_faq_id": None,
+                "question": message,
+                "category": None,
+                "score": 0.0,
+                "debug_info": {
+                    "mode": "baseline_only",
+                    "baseline_raw": None,
+                    "smart_agent_raw": None,
+                    "matched_ids": [],
+                    "metadata": {
+                        "site_host": effective_site_host,
+                        "site_resolved": False,
+                        "tracked_site_id": None,
+                    },
+                },
+            }
 
         # ۱) اجرای baseline / FAQ / simple chatbot
         baseline_result = None
         try:
+            # Pass tracked_site_id and site_host in context for potential site-scoped queries
+            query_context = {
+                "session_id": session_id,
+                "category_filter": context.get("category_filter"),
+                "debug": context.get("debug", False),
+                "tracked_site_id": tracked_site_id,
+                "site_host": effective_site_host,  # Pass site_host to answering_agent
+            }
+            
+            # Log site information
+            if tracked_site:
+                logger.info(
+                    f"Processing chat for site: {tracked_site.name} (id: {tracked_site_id}, domain: {tracked_site.domain})"
+                )
+            elif effective_site_host:
+                logger.info(f"Processing chat for unknown site_host: {effective_site_host}")
+            
             baseline_result = answer_user_query(
                 user_id=user_id,
                 message=message,
-                context={
-                    "session_id": session_id,
-                    "category_filter": context.get("category_filter"),
-                    "debug": context.get("debug", False),
-                },
+                context=query_context,
                 db=db,
             )
         except Exception as e:
@@ -89,38 +136,84 @@ class ChatOrchestrator:
 
         # Extract baseline answer safely
         baseline_answer = None
+        baseline_source = None
+        baseline_success = False
         if isinstance(baseline_result, dict):
             baseline_answer = baseline_result.get("answer") or baseline_result.get("response")
+            baseline_source = baseline_result.get("source")
+            baseline_success = baseline_result.get("success", False)
 
         smart_result: Optional[Dict[str, Any]] = None
-        mode = "baseline_only"  # DB-only mode: never call SmartAIAgent
+        mode = "baseline_only"
 
-        # DB-only mode: never call SmartAIAgent here
-        if baseline_answer:
+        # Define allowed sources for SmartAIAgent (only real data, not fallback)
+        ALLOWED_SOURCES_FOR_SMART = {"faq", "db", "kb", "database"}
+        
+        # Determine if SmartAIAgent should be called (even if USE_SMART_AGENT is False, we enforce the logic)
+        smart_agent_enabled = getattr(settings, "SMART_AGENT_ENABLED", False) or getattr(settings, "smart_agent_enabled", False)
+        smart_agent_allowed = (
+            USE_SMART_AGENT
+            and smart_agent_enabled
+            and getattr(smart_agent, "enabled", False)
+            and baseline_success is True
+            and baseline_source in ALLOWED_SOURCES_FOR_SMART
+            and baseline_source not in ("fallback", "unknown", None)
+            and baseline_answer is not None
+        )
+
+        # DB-only mode: never call SmartAIAgent (USE_SMART_AGENT = False)
+        # But if it were enabled, we would only call it when baseline has real data
+        if smart_agent_allowed:
+            # This block would call SmartAIAgent, but it's disabled by USE_SMART_AGENT = False
+            mode = "auto"
+            logger.warning("SmartAIAgent would be called but is disabled by USE_SMART_AGENT flag")
+            # Fall through to use baseline answer
             final_answer = baseline_answer
-            final_source = baseline_result.get("source", "baseline") if isinstance(baseline_result, dict) else "baseline"
-            final_success = baseline_result.get("success", True) if isinstance(baseline_result, dict) else True
+            final_source = baseline_source
+            final_success = baseline_success
+        elif baseline_answer and baseline_success and baseline_source in ALLOWED_SOURCES_FOR_SMART:
+            # Baseline has real data - use it
+            final_answer = baseline_answer
+            final_source = baseline_source
+            final_success = baseline_success
         else:
-            # No data in DB - return fixed Farsi message
-            final_answer = (
-                "برای این سؤال در حال حاضر هیچ پاسخی در داده‌های ثبت‌شده ندارم. "
-                "لطفاً سؤال را به شکل دیگری مطرح کنید یا با پشتیبانی تماس بگیرید."
-            )
+            # No data in DB or fallback - return site-specific fallback message
+            if tracked_site:
+                final_answer = (
+                    "در حال حاضر فقط می‌توانم به سوالات مربوط به اطلاعات ثبت‌شده برای این سایت پاسخ بدهم. "
+                    "لطفاً سوالتان را دقیق‌تر و مرتبط‌تر با خدمات سایت مطرح کنید."
+                )
+            else:
+                final_answer = (
+                    "برای این سؤال در حال حاضر هیچ پاسخی در داده‌های ثبت‌شده ندارم. "
+                    "لطفاً سؤال را به شکل دیگری مطرح کنید یا با پشتیبانی تماس بگیرید."
+                )
             final_source = "fallback"
             final_success = False
 
         logger.info(
-            "DB-only mode: using baseline answer. source=%s, has_answer=%s",
+            "DB-only mode: using baseline answer. source=%s, has_answer=%s, site_id=%s, site_host=%s",
             final_source,
             bool(baseline_answer),
+            tracked_site_id,
+            effective_site_host,
         )
+
+        # Build metadata with site information
+        metadata = baseline_result.get("metadata", {}) if isinstance(baseline_result, dict) else {}
+        if tracked_site:
+            metadata["tracked_site_id"] = tracked_site_id
+            metadata["tracked_site_name"] = tracked_site.name
+            metadata["tracked_site_domain"] = tracked_site.domain
+        if effective_site_host:
+            metadata["site_host"] = effective_site_host
 
         debug_info = {
             "baseline_raw": baseline_result,
             "smart_agent_raw": None,  # Never called in DB-only mode
             "mode": mode,
             "matched_ids": baseline_result.get("matched_ids", []) if isinstance(baseline_result, dict) else [],
-            "metadata": baseline_result.get("metadata", {}) if isinstance(baseline_result, dict) else {},
+            "metadata": metadata,
         }
 
         # خروجی نهایی سازگار با ساختار فعلی /api/chat
@@ -145,6 +238,7 @@ class ChatOrchestrator:
         context: Optional[Dict[str, Any]] = None,
         mode: str = "auto",
         user_id: Optional[str] = None,
+        site_host: Optional[str] = None,  # NEW: explicit site_host parameter
         db: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
@@ -154,12 +248,16 @@ class ChatOrchestrator:
         source = context.get("source")
         page_url = context.get("page_url")
         
+        # Use explicit site_host parameter if provided, otherwise get from context
+        effective_site_host = site_host or context.get("site_host")
+        
         return await self.handle_chat(
             message=message,
             source=source,
             page_url=page_url,
             context=context,
             user_id=user_id,
+            site_host=effective_site_host,  # Pass site_host explicitly
             db=db,
         )
 

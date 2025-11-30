@@ -203,17 +203,42 @@
                 sendButton.disabled = true;
                 addLoadingMessage();
                 
+                // Get site host from parent window or current location
+                var siteHost = null;
+                try {
+                    if (window.parent && window.parent.location && window.parent.location.host) {
+                        siteHost = window.parent.location.host;
+                    } else if (window.location && window.location.host) {
+                        siteHost = window.location.host;
+                    }
+                } catch (e) {
+                    // Cross-origin, try to get from config
+                    try {
+                        if (window.parent && window.parent.ZIMMER_CHATBOT_CONFIG) {
+                            siteHost = window.parent.ZIMMER_CHATBOT_CONFIG.siteId;
+                        }
+                    } catch (e2) {
+                        // Fallback: use current host if accessible
+                        if (window.location && window.location.host) {
+                            siteHost = window.location.host;
+                        }
+                    }
+                }
+                
                 // Send to API
-                fetch(apiBase + '/dual-answer', {
+                var payload = {
+                    message: message,
+                    channel: "website-widget",
+                    source: "website-widget",
+                    site_host: siteHost
+                };
+                
+                fetch(apiBase + '/chat', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        question: message,
-                        use_primary_only: false,
-                        use_secondary_only: false
-                    })
+                    body: JSON.stringify(payload)
                 })
                 .then(function(response) {
                     return response.json();

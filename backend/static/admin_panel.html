@@ -348,9 +348,9 @@
                 
                 <div class="action-card">
                     <div class="action-icon">🌐</div>
-                    <div class="action-title">اضافه سایت</div>
-                    <div class="action-description">افزودن یا حذف URL های وب‌سایت</div>
-                    <button class="action-button" onclick="openDashboard()">اضافه سایت</button>
+                    <div class="action-title">مدیریت سایت‌ها</div>
+                    <div class="action-description">افزودن یا حذف سایت‌های متصل</div>
+                    <button class="action-button" onclick="manageSites()">مدیریت سایت‌ها</button>
                 </div>
             </div>
             
@@ -446,6 +446,52 @@
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeBotSettingsModal()">انصراف</button>
                     <button type="submit" class="btn btn-primary">ذخیره تنظیمات</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Sites Management Modal -->
+    <div id="sitesModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeSitesModal()">&times;</span>
+            <h2>🌐 مدیریت سایت‌های متصل</h2>
+            <div id="sitesMessage"></div>
+            
+            <!-- Sites List -->
+            <div id="sitesList" style="margin: 20px 0;">
+                <h3>سایت‌های ثبت‌شده:</h3>
+                <div id="sitesTable" style="margin-top: 15px;"></div>
+            </div>
+            
+            <!-- Add Site Form -->
+            <h3>افزودن سایت جدید:</h3>
+            <form id="siteForm" onsubmit="saveSite(event)">
+                <div class="form-group">
+                    <label for="siteName">نام سایت:</label>
+                    <input type="text" id="siteName" name="name" required placeholder="مثال: سایت اصلی">
+                </div>
+                
+                <div class="form-group">
+                    <label for="siteUrl">آدرس URL:</label>
+                    <input type="text" id="siteUrl" name="url" required placeholder="https://example.com">
+                </div>
+                
+                <div class="form-group">
+                    <label for="siteDescription">توضیحات (اختیاری):</label>
+                    <input type="text" id="siteDescription" name="description" placeholder="توضیحات سایت">
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="siteIsActive" name="is_active" checked>
+                        سایت فعال است
+                    </label>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeSitesModal()">انصراف</button>
+                    <button type="submit" class="btn btn-primary">ذخیره</button>
                 </div>
             </form>
         </div>
@@ -601,6 +647,151 @@
         function manageCategories() {
             // Open categories management page
             window.location.href = `${ADMIN_API}/admin/categories`;
+        }
+        
+        // Sites Management Functions
+        let editingSiteId = null;
+        
+        function manageSites() {
+            const modal = document.getElementById('sitesModal');
+            modal.style.display = 'block';
+            loadSites();
+        }
+        
+        function closeSitesModal() {
+            const modal = document.getElementById('sitesModal');
+            modal.style.display = 'none';
+            editingSiteId = null;
+            document.getElementById('siteForm').reset();
+            document.getElementById('sitesMessage').innerHTML = '';
+        }
+        
+        async function loadSites() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/sites`);
+                if (!response.ok) {
+                    throw new Error('Failed to load sites');
+                }
+                const sites = await response.json();
+                displaySites(sites);
+            } catch (error) {
+                console.error('Error loading sites:', error);
+                document.getElementById('sitesTable').innerHTML = '<p style="color: red;">خطا در بارگذاری سایت‌ها</p>';
+            }
+        }
+        
+        function displaySites(sites) {
+            const table = document.getElementById('sitesTable');
+            if (!sites || sites.length === 0) {
+                table.innerHTML = '<p>هیچ سایتی ثبت نشده است.</p>';
+                return;
+            }
+            
+            let html = '<table style="width: 100%; border-collapse: collapse; margin-top: 10px;">';
+            html += '<thead><tr style="background: #f8f9fa; border-bottom: 2px solid #ddd;">';
+            html += '<th style="padding: 10px; text-align: right;">نام</th>';
+            html += '<th style="padding: 10px; text-align: right;">دامنه</th>';
+            html += '<th style="padding: 10px; text-align: center;">وضعیت</th>';
+            html += '<th style="padding: 10px; text-align: center;">عملیات</th>';
+            html += '</tr></thead><tbody>';
+            
+            sites.forEach(site => {
+                const domain = site.domain || (site.url ? new URL(site.url).hostname : '');
+                html += '<tr style="border-bottom: 1px solid #eee;">';
+                html += `<td style="padding: 10px;">${site.name}</td>`;
+                html += `<td style="padding: 10px;">${domain}</td>`;
+                html += `<td style="padding: 10px; text-align: center;">${site.is_active ? '✅ فعال' : '❌ غیرفعال'}</td>`;
+                html += '<td style="padding: 10px; text-align: center;">';
+                html += `<button class="btn btn-primary" style="padding: 5px 10px; font-size: 0.8em; margin: 0 5px;" onclick="editSite(${site.id})">ویرایش</button>`;
+                html += `<button class="btn btn-secondary" style="padding: 5px 10px; font-size: 0.8em; background: #dc3545;" onclick="deleteSite(${site.id})">حذف</button>`;
+                html += '</td>';
+                html += '</tr>';
+            });
+            
+            html += '</tbody></table>';
+            table.innerHTML = html;
+        }
+        
+        function editSite(siteId) {
+            editingSiteId = siteId;
+            fetch(`${API_BASE}/admin/sites/${siteId}`)
+                .then(response => response.json())
+                .then(site => {
+                    document.getElementById('siteName').value = site.name;
+                    document.getElementById('siteUrl').value = site.url;
+                    document.getElementById('siteDescription').value = site.description || '';
+                    document.getElementById('siteIsActive').checked = site.is_active;
+                })
+                .catch(error => {
+                    console.error('Error loading site:', error);
+                    alert('خطا در بارگذاری اطلاعات سایت');
+                });
+        }
+        
+        async function saveSite(event) {
+            event.preventDefault();
+            const formData = {
+                name: document.getElementById('siteName').value,
+                url: document.getElementById('siteUrl').value,
+                description: document.getElementById('siteDescription').value,
+                is_active: document.getElementById('siteIsActive').checked
+            };
+            
+            try {
+                let response;
+                if (editingSiteId) {
+                    response = await fetch(`${API_BASE}/admin/sites/${editingSiteId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(formData)
+                    });
+                } else {
+                    response = await fetch(`${API_BASE}/admin/sites`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(formData)
+                    });
+                }
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'خطا در ذخیره سایت');
+                }
+                
+                document.getElementById('sitesMessage').innerHTML = 
+                    '<p style="color: green; padding: 10px; background: #d4edda; border-radius: 5px;">سایت با موفقیت ذخیره شد.</p>';
+                document.getElementById('siteForm').reset();
+                editingSiteId = null;
+                loadSites();
+            } catch (error) {
+                console.error('Error saving site:', error);
+                document.getElementById('sitesMessage').innerHTML = 
+                    `<p style="color: red; padding: 10px; background: #f8d7da; border-radius: 5px;">${error.message}</p>`;
+            }
+        }
+        
+        async function deleteSite(siteId) {
+            if (!confirm('آیا مطمئن هستید که می‌خواهید این سایت را حذف کنید؟')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/sites/${siteId}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) {
+                    throw new Error('خطا در حذف سایت');
+                }
+                
+                document.getElementById('sitesMessage').innerHTML = 
+                    '<p style="color: green; padding: 10px; background: #d4edda; border-radius: 5px;">سایت با موفقیت حذف شد.</p>';
+                loadSites();
+            } catch (error) {
+                console.error('Error deleting site:', error);
+                document.getElementById('sitesMessage').innerHTML = 
+                    '<p style="color: red; padding: 10px; background: #f8d7da; border-radius: 5px;">خطا در حذف سایت</p>';
+            }
         }
         
         function copyWidgetCode() {

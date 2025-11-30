@@ -21,8 +21,14 @@ class SimpleChatbot:
         self.faqs = []
         self.fallback_answer = "متأسفانه پاسخ مناسبی برای این سؤال پیدا نکردم. لطفاً سؤال خود را به شکل دیگری مطرح کنید."
     
-    def load_faqs_from_db(self) -> bool:
-        """Load FAQs directly from database with error handling"""
+    def load_faqs_from_db(self, tracked_site_id: Optional[int] = None) -> bool:
+        """
+        Load FAQs directly from database with error handling.
+        
+        Args:
+            tracked_site_id: Optional site ID to filter FAQs. If provided, only loads FAQs
+                            for that site or global FAQs (tracked_site_id is None).
+        """
         try:
             # Use provided database session or create a new one
             if hasattr(self, 'db_session') and self.db_session:
@@ -30,8 +36,21 @@ class SimpleChatbot:
             else:
                 db = next(get_db())
             
-            # Get all active FAQs
-            faqs = db.query(FAQ).filter(FAQ.is_active == True).all()
+            # Build filter: active FAQs, optionally filtered by site
+            from sqlalchemy import or_
+            filter_conditions = [FAQ.is_active == True]
+            
+            if tracked_site_id is not None:
+                # Load FAQs for this site OR global FAQs (tracked_site_id is None)
+                filter_conditions.append(
+                    or_(
+                        FAQ.tracked_site_id == tracked_site_id,
+                        FAQ.tracked_site_id.is_(None)  # Include global FAQs
+                    )
+                )
+                logger.info(f"Loading FAQs filtered by tracked_site_id: {tracked_site_id}")
+            
+            faqs = db.query(FAQ).filter(*filter_conditions).all()
             
             self.faqs = []
             for faq in faqs:
@@ -47,13 +66,14 @@ class SimpleChatbot:
                     "id": faq.id,
                     "question": faq.question,
                     "answer": faq.answer,
-                    "category": category_name
+                    "category": category_name,
+                    "tracked_site_id": faq.tracked_site_id  # Include site_id for filtering
                 })
             
             # Only close the database session if we created it
             if not (hasattr(self, 'db_session') and self.db_session):
                 db.close()
-            logger.info(f"Loaded {len(self.faqs)} FAQs from database")
+            logger.info(f"Loaded {len(self.faqs)} FAQs from database (site_id: {tracked_site_id})")
             return True
             
         except Exception as e:

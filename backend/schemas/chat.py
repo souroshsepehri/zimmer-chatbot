@@ -5,7 +5,10 @@ from datetime import datetime
 
 class ChatRequest(BaseModel):
     message: str
-    source: Optional[str] = None  # Source identifier (e.g., widget, public-smart-test)
+    channel: Optional[str] = None  # Channel identifier (e.g., "telegram", "website-widget", "web")
+    user_id: Optional[str] = None  # User identifier
+    source: Optional[str] = None  # Source identifier (e.g., widget, public-smart-test) - kept for backward compatibility
+    site_host: Optional[str] = None  # Host/domain of the site where widget is embedded (e.g., "example.com")
     debug: Optional[bool] = False
     category_filter: Optional[str] = None
     mode: Optional[str] = "auto"  # "auto", "smart_agent", or "baseline"

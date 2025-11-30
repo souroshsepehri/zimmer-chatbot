@@ -23,10 +23,11 @@ class FAQ(Base):
     question = Column(Text, nullable=False)
     answer = Column(Text, nullable=False)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    tracked_site_id = Column(Integer, ForeignKey("tracked_sites.id"), nullable=True, index=True)  # Site-scoped FAQs
     embedding = Column(BLOB, nullable=True)  # Store FAISS vector as binary
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # Relationship
+    # Relationships
     category = relationship("Category", back_populates="faqs")

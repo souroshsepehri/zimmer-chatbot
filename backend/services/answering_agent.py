@@ -496,10 +496,16 @@ class AnsweringAgent:
         Retrieves relevant FAQs from the database using both
         simple keyword matching and semantic search.
         Supports different phrasings through canonical question matching.
+        Filters by tracked_site_id if provided in context.
         """
         tables_queried = ["faqs", "categories"]
         matched_ids = []
         category_filter = context.get("category_filter") if context else None
+        tracked_site_id = context.get("tracked_site_id") if context else None
+        
+        # Log site filtering
+        if tracked_site_id:
+            logger.info(f"Filtering FAQs by tracked_site_id: {tracked_site_id}")
         
         try:
             # Try using simple_chatbot's search_faqs which has better scoring
@@ -508,26 +514,38 @@ class AnsweringAgent:
             simple_chatbot = get_simple_chatbot()
             simple_chatbot.db_session = db
             
-            # Use simple_chatbot's improved search
+            # Use simple_chatbot's improved search with site filtering
             simple_results = []
             try:
-                if simple_chatbot.load_faqs_from_db():
+                if simple_chatbot.load_faqs_from_db(tracked_site_id=tracked_site_id):
                     simple_results = simple_chatbot.search_faqs(
                         query=message,
                         min_score=10.0  # Lower threshold for better matching
                     )
-                    logger.info(f"Simple chatbot search found {len(simple_results)} results")
+                    # Filter results by site_id if provided (double-check)
+                    if tracked_site_id and simple_results:
+                        simple_results = [
+                            r for r in simple_results
+                            if r.get("tracked_site_id") is None or r.get("tracked_site_id") == tracked_site_id
+                        ]
+                    logger.info(f"Simple chatbot search found {len(simple_results)} results (site_id: {tracked_site_id})")
             except Exception as e:
                 logger.warning(f"Simple chatbot search failed: {e}, trying simple retriever")
                 # Fallback to simple retriever
                 if simple_faq_retriever:
                     try:
-                        simple_faq_retriever.load_faqs(db)
+                        simple_faq_retriever.load_faqs(db, tracked_site_id=tracked_site_id)
                         simple_results = simple_faq_retriever.search(
                             query=message,
                             top_k=5,
                             threshold=0.1  # Lower threshold
                         )
+                        # Filter results by site_id if provided (double-check)
+                        if tracked_site_id and simple_results:
+                            simple_results = [
+                                r for r in simple_results
+                                if r.get("tracked_site_id") is None or r.get("tracked_site_id") == tracked_site_id
+                            ]
                     except Exception as e2:
                         logger.warning(f"Simple retriever also failed: {e2}")
             
@@ -668,14 +686,26 @@ class AnsweringAgent:
                     search_terms = [f"%{word}%" for word in query_words if len(word) > 2]
                     
                     if search_terms:
-                        db_faqs = db.query(FAQ).filter(
-                            and_(
-                                FAQ.is_active == True,
+                        # Build filter conditions
+                        filter_conditions = [
+                            FAQ.is_active == True,
+                            or_(
+                                *[FAQ.question.like(term) for term in search_terms],
+                                *[FAQ.answer.like(term) for term in search_terms]
+                            )
+                        ]
+                        
+                        # Add site filtering if tracked_site_id is provided
+                        if tracked_site_id:
+                            filter_conditions.append(
                                 or_(
-                                    *[FAQ.question.like(term) for term in search_terms],
-                                    *[FAQ.answer.like(term) for term in search_terms]
+                                    FAQ.tracked_site_id == tracked_site_id,
+                                    FAQ.tracked_site_id.is_(None)  # Also include global FAQs (no site_id)
                                 )
                             )
+                        
+                        db_faqs = db.query(FAQ).filter(
+                            and_(*filter_conditions)
                         ).limit(3).all()
                         
                         if db_faqs:
@@ -779,11 +809,24 @@ class AnsweringAgent:
             
             if categories:
                 category = categories[0]
-                faqs = db.query(FAQ).filter(
-                    and_(
-                        FAQ.category_id == category.id,
-                        FAQ.is_active == True
+                # Build filter conditions
+                filter_conditions = [
+                    FAQ.category_id == category.id,
+                    FAQ.is_active == True
+                ]
+                
+                # Add site filtering if tracked_site_id is provided
+                if tracked_site_id:
+                    from sqlalchemy import or_
+                    filter_conditions.append(
+                        or_(
+                            FAQ.tracked_site_id == tracked_site_id,
+                            FAQ.tracked_site_id.is_(None)  # Also include global FAQs
+                        )
                     )
+                
+                faqs = db.query(FAQ).filter(
+                    and_(*filter_conditions)
                 ).limit(5).all()
                 
                 if faqs:

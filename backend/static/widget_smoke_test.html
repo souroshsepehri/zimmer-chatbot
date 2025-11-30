@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Widget Smoke Test - testsite.com</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin-bottom: 30px;
+            border-radius: 4px;
+        }
+        
+        .info-box h3 {
+            color: #1976d2;
+            margin-bottom: 10px;
+        }
+        
+        .info-box ul {
+            margin-left: 20px;
+            color: #555;
+        }
+        
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+        
+        .test-section h2 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin-left: 10px;
+        }
+        
+        .status.success {
+            background: #4caf50;
+            color: white;
+        }
+        
+        .status.error {
+            background: #f44336;
+            color: white;
+        }
+        
+        .status.pending {
+            background: #ff9800;
+            color: white;
+        }
+        
+        .widget-container {
+            margin-top: 30px;
+            border: 2px dashed #ddd;
+            border-radius: 10px;
+            padding: 20px;
+            background: #fafafa;
+        }
+        
+        .widget-container h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        
+        .current-host {
+            background: #fff3cd;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Widget Smoke Test Page</h1>
+        <p class="subtitle">Testing site-scoped chat widget for <code>testsite.com</code></p>
+        
+        <div class="info-box">
+            <h3>📋 Test Instructions</h3>
+            <ul>
+                <li>This page simulates a page from <code>testsite.com</code></li>
+                <li>The widget should automatically detect the site host</li>
+                <li>Chat responses should be scoped to FAQs for this site only</li>
+                <li>If no FAQs exist for this site, you should get a controlled fallback</li>
+                <li>SmartAIAgent should NOT be called when no data is found</li>
+            </ul>
+        </div>
+        
+        <div class="test-section">
+            <h2>Current Site Information</h2>
+            <div class="current-host">
+                <strong>Detected Host:</strong> <span id="currentHost">Loading...</span>
+            </div>
+            <div id="siteStatus" class="status pending">Checking site...</div>
+        </div>
+        
+        <div class="widget-container">
+            <h3>💬 Chat Widget</h3>
+            <p style="margin-bottom: 15px; color: #666;">
+                The widget below should automatically use <code>site_host</code> from the current page.
+                Try asking a question and verify the response is site-scoped.
+            </p>
+            
+            <!-- Widget iframe -->
+            <iframe 
+                id="chatbotWidget"
+                src="/static/chat-window.html"
+                style="width: 100%; height: 600px; border: 1px solid #ddd; border-radius: 8px;"
+                frameborder="0"
+            ></iframe>
+        </div>
+        
+        <div class="test-section">
+            <h2>Manual Test</h2>
+            <p style="margin-bottom: 15px;">You can also test the API directly:</p>
+            <pre style="background: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto;">
+curl -X POST http://localhost:8001/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "channel": "website-widget",
+    "user_id": "test-user",
+    "message": "یک سوال درباره محتوای همین سایت تست",
+    "site_host": "testsite.com"
+  }'
+            </pre>
+        </div>
+    </div>
+    
+    <script>
+        // Display current host
+        const currentHost = window.location.host || 'localhost';
+        document.getElementById('currentHost').textContent = currentHost;
+        
+        // Check if this matches testsite.com (or allow manual override)
+        const expectedHost = 'testsite.com';
+        const isTestSite = currentHost.includes('testsite.com') || 
+                          currentHost === 'localhost' || 
+                          currentHost.includes('127.0.0.1');
+        
+        if (isTestSite) {
+            document.getElementById('siteStatus').textContent = '✓ Test site detected';
+            document.getElementById('siteStatus').className = 'status success';
+        } else {
+            document.getElementById('siteStatus').textContent = '⚠ Not testsite.com (using current host)';
+            document.getElementById('siteStatus').className = 'status pending';
+        }
+        
+        // Log widget communication (if accessible)
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'chatbot') {
+                console.log('Widget message:', event.data);
+            }
+        });
+        
+        // Override site_host for testing (if needed)
+        // This allows testing even if not on testsite.com
+        if (window.location.search.includes('mock_host=testsite.com')) {
+            console.log('Mocking site_host as testsite.com');
+            // The widget will use window.location.host, but we can override via config
+            window.ZIMMER_CHATBOT_CONFIG = {
+                siteId: 'testsite.com',
+                site_host: 'testsite.com'
+            };
+        }
+    </script>
+</body>
+</html>
+

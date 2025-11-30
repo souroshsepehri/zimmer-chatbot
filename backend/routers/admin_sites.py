@@ -15,6 +15,7 @@ from schemas.tracked_site import (
     TrackedSiteUpdate,
     TrackedSiteRead,
 )
+from services.sites_service import extract_domain_from_url
 
 router = APIRouter(
     prefix="/api/admin/sites",
@@ -32,6 +33,26 @@ def list_sites(db: Session = Depends(get_db)):
     """
     q = db.query(TrackedSite).order_by(TrackedSite.created_at.desc())
     return q.all()
+
+
+@router.get("/{site_id}", response_model=TrackedSiteRead)
+def get_site(site_id: int, db: Session = Depends(get_db)):
+    """
+    Get a single tracked site by ID.
+    
+    Args:
+        site_id: ID of the site to retrieve
+        
+    Returns:
+        TrackedSiteRead object
+        
+    Raises:
+        HTTPException: If site not found
+    """
+    site = db.query(TrackedSite).filter(TrackedSite.id == site_id).first()
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+    return site
 
 
 @router.post("", response_model=TrackedSiteRead)
@@ -55,9 +76,13 @@ def create_site(payload: TrackedSiteCreate, db: Session = Depends(get_db)):
             detail="Site with this URL already exists"
         )
     
+    # Extract domain from URL
+    domain = extract_domain_from_url(str(payload.url))
+    
     obj = TrackedSite(
         name=payload.name,
         url=str(payload.url),
+        domain=domain,
         description=payload.description,
         is_active=payload.is_active,
     )
@@ -96,9 +121,16 @@ def update_site(
         if value is not None:
             # Convert HttpUrl to string if needed
             if key == "url" and value:
-                setattr(obj, key, str(value))
+                url_str = str(value)
+                setattr(obj, key, url_str)
+                # Update domain when URL changes
+                obj.domain = extract_domain_from_url(url_str)
             else:
                 setattr(obj, key, value)
+    
+    # If domain is not set but URL is, extract it
+    if not obj.domain and obj.url:
+        obj.domain = extract_domain_from_url(obj.url)
     
     db.commit()
     db.refresh(obj)

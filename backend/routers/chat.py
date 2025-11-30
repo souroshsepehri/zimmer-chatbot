@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from schemas.chat import ChatRequest, ChatResponse
 from services.chat_orchestrator import chat_orchestrator
+from services.sites_service import resolve_site_by_host
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -34,17 +35,34 @@ async def chat(
     The orchestrator provides automatic fallback to baseline if SmartAIAgent fails.
     """
     start_time = time.time()
-    session_id = getattr(request, 'session_id', 'default_session')
-    user_id = getattr(request, 'user_id', None)
+    # Get user_id from request or context
+    user_id = request.user_id or (request.context.get("user_id") if request.context else None)
+    # Get session_id from context or use default
+    session_id = (request.context.get("session_id") if request.context else None) or 'default_session'
+    # Use channel if provided, otherwise fall back to source
+    channel = request.channel or request.source or "unknown"
     
     try:
+        # Resolve site from site_host if provided
+        tracked_site = None
+        if request.site_host:
+            tracked_site = resolve_site_by_host(db, request.site_host)
+            if tracked_site:
+                logger.info(f"Resolved site: {tracked_site.name} (domain: {tracked_site.domain}) for host: {request.site_host}")
+            else:
+                logger.warning(f"No tracked site found for host: {request.site_host}")
+        
         # Merge request context with any provided context
         context = request.context or {}
         context.update({
             "session_id": session_id or context.get("session_id"),
-            "source": request.source or context.get("source") or "unknown",
+            "source": channel,  # Use channel as source
+            "channel": channel,  # Also include channel explicitly
             "debug": request.debug,
             "category_filter": request.category_filter,
+            "tracked_site_id": tracked_site.id if tracked_site else None,
+            "tracked_site": tracked_site,  # Pass the full site object for use in orchestrator
+            "site_host": request.site_host,  # Pass site_host explicitly in context
         })
         
         # Use orchestrator to route the message
@@ -53,6 +71,7 @@ async def chat(
             context=context,
             mode=request.mode or "auto",
             user_id=user_id,
+            site_host=request.site_host,  # Pass site_host explicitly
             db=db,
         )
         
@@ -67,6 +86,15 @@ async def chat(
         if isinstance(intent_value, dict):
             intent_value = intent_value.get("label", "unknown")
         
+        # Log to debugger with site information
+        debug_info_with_site = result.get("debug_info", {})
+        if tracked_site:
+            debug_info_with_site["tracked_site_id"] = tracked_site.id
+            debug_info_with_site["tracked_site_name"] = tracked_site.name
+            debug_info_with_site["tracked_site_domain"] = tracked_site.domain
+        if request.site_host:
+            debug_info_with_site["site_host"] = request.site_host
+        
         debugger.log_request(
             session_id=session_id,
             user_message=request.message,
@@ -75,8 +103,16 @@ async def chat(
             intent_detected=intent_value,
             faq_matches=result.get("debug_info", {}).get("retrieval_results", []),
             search_scores=[],
-            debug_info=result.get("debug_info", {})
+            debug_info=debug_info_with_site
         )
+        
+        # Log site information to application logger
+        if tracked_site:
+            logger.info(
+                f"Chat request processed for site: {tracked_site.name} (id: {tracked_site.id}, domain: {tracked_site.domain})"
+            )
+        elif request.site_host:
+            logger.info(f"Chat request processed for unknown site_host: {request.site_host}")
         
         # Convert context to string if it's a dict
         context_value = result.get("context")

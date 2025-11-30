@@ -14,9 +14,27 @@ class SimpleFAQRetriever:
         self.faqs = []
         self.faq_mapping = {}
     
-    def load_faqs(self, db: Session):
-        """Load FAQs from database"""
-        faqs = db.query(FAQ).filter(FAQ.is_active == True).all()
+    def load_faqs(self, db: Session, tracked_site_id: Optional[int] = None):
+        """
+        Load FAQs from database, optionally filtered by site.
+        
+        Args:
+            db: Database session
+            tracked_site_id: Optional site ID to filter FAQs. If provided, only loads FAQs
+                            for that site or global FAQs (tracked_site_id is None).
+        """
+        from sqlalchemy import or_
+        filter_conditions = [FAQ.is_active == True]
+        
+        if tracked_site_id is not None:
+            filter_conditions.append(
+                or_(
+                    FAQ.tracked_site_id == tracked_site_id,
+                    FAQ.tracked_site_id.is_(None)  # Include global FAQs
+                )
+            )
+        
+        faqs = db.query(FAQ).filter(*filter_conditions).all()
         self.faqs = []
         self.faq_mapping = {}
         
@@ -25,11 +43,12 @@ class SimpleFAQRetriever:
                 "faq_id": faq.id,
                 "question": faq.question,
                 "answer": faq.answer,
-                "category": faq.category.name if faq.category else None
+                "category": faq.category.name if faq.category else None,
+                "tracked_site_id": faq.tracked_site_id
             })
             self.faq_mapping[i] = faq.id
         
-        print(f"Loaded {len(self.faqs)} FAQs for simple matching")
+        print(f"Loaded {len(self.faqs)} FAQs for simple matching (site_id: {tracked_site_id})")
     
     def simple_search(self, query: str, top_k: int = 4) -> List[Dict[str, Any]]:
         """Simple text-based search using keyword matching"""
