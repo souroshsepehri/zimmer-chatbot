@@ -90,43 +90,19 @@ class SmartAIAgent:
                 "error": "SmartAIAgent is disabled (no OPENAI_API_KEY)",
             }
 
-        # Strict system prompt - only use DB/site context
+        # MUCH stricter system prompt - only use explicit context/history
         system_prompt = (
-            "تو فقط دستیار هوشمند همین وب‌سایت و همین سیستم هستی.\n"
-            "منابع تو فقط این‌ها هستند:\n"
-            "- پاسخ اولیه‌ای که از موتور اصلی بات (دیتابیس، FAQ، جستجو) گرفته شده است.\n"
-            "- متن‌های زمینه و اطلاعاتی که به‌عنوان کانتکست از صفحات سایت و پایگاه داده به تو داده می‌شود.\n\n"
-            "قوانین مهم:\n"
-            "1) فقط بر اساس همین اطلاعات پاسخ بده. از هیچ دانش عمومی دیگری استفاده نکن.\n"
-            "2) اگر سؤال کاربر ربطی به این سایت، خدمات آن یا داده‌های موجود ندارد، صریحاً بگو که من فقط به سوالات مرتبط با همین سایت و اطلاعات ثبت‌شده جواب می‌دهم.\n"
-            "3) اگر اطلاعات موجود ناقص است یا مطمئن نیستی، حدس نزن؛ شفاف بگو که اطلاعات کافی ندارم.\n"
-            "4) همیشه به زبان فارسی روان، کوتاه و شفاف جواب بده."
+            "تو دستیار هوشمند وب‌سایت Zimmer هستی و فقط مجاز هستی بر اساس اطلاعاتی که در کانتکست و تاریخچهٔ گفتگو (history و context) به تو داده می‌شود پاسخ بدهی. "
+            "به هیچ عنوان از دانش عمومی خودت، اطلاعات اینترنت یا حدس زدن استفاده نکن. "
+            "اگر پاسخ دقیق در کانتکست یا تاریخچه وجود نداشت، فقط و فقط این جمله را برگردان:\n"
+            "«متأسفم، فقط می‌توانم دربارهٔ اطلاعات همین وب‌سایت و داده‌های ثبت‌شده‌اش پاسخ بدهم و برای این سؤال داده‌ای ندارم.»\n"
+            "اگر سؤال کاربر کاملاً نامرتبط با موضوع وب‌سایت، خدمات یا دیتابیس باشد (مثلاً داستان، جوک، اطلاعات عمومی)، "
+            "دقیقاً همین جملهٔ بالا را برگردان و هیچ چیز دیگری اضافه نکن."
         )
 
         # Build messages list
         messages_list = []
         messages_list.append({"role": "system", "content": system_prompt})
-
-        # Add baseline result as context if available
-        if baseline_result and isinstance(baseline_result.get("answer"), str):
-            messages_list.append({
-                "role": "system",
-                "content": f"پاسخ اولیه بر اساس دیتابیس/FAQ:\n{baseline_result['answer']}"
-            })
-
-        # Extract context_text from context or kwargs
-        context_text = None
-        if context and isinstance(context.get("text"), str):
-            context_text = context["text"]
-        elif "context_text" in kwargs and isinstance(kwargs["context_text"], str):
-            context_text = kwargs["context_text"]
-
-        # Add site/DB context if available
-        if context_text:
-            messages_list.append({
-                "role": "system",
-                "content": "این متن‌ها از سایت/دیتابیس به‌عنوان زمینه اضافه شده‌اند:\n" + context_text
-            })
 
         # Add chat history if available
         if history:
@@ -137,8 +113,37 @@ class SmartAIAgent:
                     if content:
                         messages_list.append({"role": role, "content": content})
 
+        # Build context string from available sources
+        context_parts = []
+        
+        # Add baseline result as context if available
+        if baseline_result and isinstance(baseline_result.get("answer"), str):
+            context_parts.append(f"پاسخ اولیه بر اساس دیتابیس/FAQ:\n{baseline_result['answer']}")
+
+        # Extract context_text from context or kwargs
+        context_text = None
+        if context and isinstance(context.get("text"), str):
+            context_text = context["text"]
+        elif "context_text" in kwargs and isinstance(kwargs["context_text"], str):
+            context_text = kwargs["context_text"]
+
+        # Add site/DB context if available
+        if context_text:
+            context_parts.append(f"متن‌های زمینه از سایت/دیتابیس:\n{context_text}")
+
+        # Build user message with context if available
+        user_content = message
+        if context_parts:
+            context_str = "\n\n".join(context_parts)
+            user_content = (
+                "متن زیر کانتکست و اطلاعات موجود از سیستم است. "
+                "فقط بر اساس این اطلاعات پاسخ بده و اگر پاسخ نبود، همان جملهٔ عدم دسترسی به داده را برگردان.\n\n"
+                f"کانتکست:\n{context_str}\n\n"
+                f"سؤال کاربر:\n{message}"
+            )
+
         # Add final user message
-        messages_list.append({"role": "user", "content": message})
+        messages_list.append({"role": "user", "content": user_content})
 
         payload_messages = messages_list
 

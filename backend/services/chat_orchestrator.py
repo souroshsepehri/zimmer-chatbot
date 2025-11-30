@@ -92,19 +92,42 @@ class ChatOrchestrator:
         mode: Optional[str] = None
 
         # ۲) Gate SmartAIAgent: only call if baseline result is based on real data, not fallback
-        use_smart_agent = (
+        # Extract intent and source from baseline result
+        intent = baseline_result.get("intent")
+        source = baseline_result.get("source")
+
+        # Define disallowed intents and sources for smart agent
+        DISALLOWED_INTENTS_FOR_SMART = {"unknown"}
+        DISALLOWED_SOURCES_FOR_SMART = {"fallback", "static_greeting"}
+
+        # Determine if SmartAIAgent should be called
+        smart_agent_allowed = (
             settings.smart_agent_enabled
             and getattr(smart_agent, "enabled", False)
             and baseline_result is not None
             and baseline_result.get("success") is True
-            and baseline_result.get("source") not in ("fallback", "unknown", None)
+            and source not in DISALLOWED_SOURCES_FOR_SMART
+            and intent not in DISALLOWED_INTENTS_FOR_SMART
         )
 
-        if use_smart_agent:
+        if not smart_agent_allowed:
+            logger.info(
+                "SmartAIAgent skipped: intent=%s, source=%s, enabled=%s",
+                intent,
+                source,
+                getattr(smart_agent, "enabled", False),
+            )
+            mode = "baseline_only"
+        else:
             mode = "auto"
             
             # Extract history from context if available
             history = context.get("history", []) if context else []
+            
+            # Extract context_text for smart agent
+            context_text = None
+            if context and isinstance(context.get("text"), str):
+                context_text = context["text"]
             
             try:
                 smart_result = await smart_agent.run(
@@ -113,9 +136,13 @@ class ChatOrchestrator:
                     session_id=session_id,
                     page_url=page_url,
                     history=history,
-                    context=context,
+                    context={"text": context_text} if context_text else context,
                 )
-                logger.debug("SmartAIAgent.run() returned: success=%s", smart_result.get("success"))
+                logger.debug(
+                    "SmartAIAgent.run() returned: success=%s reason=%s",
+                    smart_result.get("success"),
+                    smart_result.get("reason"),
+                )
 
                 if smart_result.get("success"):
                     final_answer = smart_result["answer"]
@@ -136,9 +163,6 @@ class ChatOrchestrator:
                 final_answer = baseline_result["answer"]
                 final_source = baseline_result.get("source", "baseline")
                 mode = "baseline_exception"
-        else:
-            logger.info("Skipping SmartAIAgent: no reliable baseline/context. Using baseline answer only.")
-            mode = "baseline_only"
 
         debug_info = {
             "baseline_raw": baseline_result,
