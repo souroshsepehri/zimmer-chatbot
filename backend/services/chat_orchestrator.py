@@ -15,6 +15,9 @@ from core.config import settings
 
 logger = logging.getLogger("services.chat_orchestrator")
 
+# Feature flag: DB-only mode - no OpenAI calls in main chat flow
+USE_SMART_AGENT = False  # DB-only mode: no OpenAI calls
+
 
 class ChatOrchestrator:
     """
@@ -84,108 +87,56 @@ class ChatOrchestrator:
         # baseline_result باید حداقل این فیلدها را داشته باشد:
         # answer, intent, confidence, source, success, matched_ids, metadata, tables_queried
 
-        final_answer = baseline_result.get("answer")
-        final_source = baseline_result.get("source", "baseline")
-        final_success = baseline_result.get("success", True)
+        # Extract baseline answer safely
+        baseline_answer = None
+        if isinstance(baseline_result, dict):
+            baseline_answer = baseline_result.get("answer") or baseline_result.get("response")
 
         smart_result: Optional[Dict[str, Any]] = None
-        mode: Optional[str] = None
+        mode = "baseline_only"  # DB-only mode: never call SmartAIAgent
 
-        # ۲) Gate SmartAIAgent: only call if baseline result is based on real data, not fallback
-        # Extract intent and source from baseline result
-        intent = baseline_result.get("intent")
-        source = baseline_result.get("source")
-
-        # Define disallowed intents and sources for smart agent
-        DISALLOWED_INTENTS_FOR_SMART = {"unknown"}
-        DISALLOWED_SOURCES_FOR_SMART = {"fallback", "static_greeting"}
-
-        # Determine if SmartAIAgent should be called
-        smart_agent_allowed = (
-            settings.smart_agent_enabled
-            and getattr(smart_agent, "enabled", False)
-            and baseline_result is not None
-            and baseline_result.get("success") is True
-            and source not in DISALLOWED_SOURCES_FOR_SMART
-            and intent not in DISALLOWED_INTENTS_FOR_SMART
-        )
-
-        if not smart_agent_allowed:
-            logger.info(
-                "SmartAIAgent skipped: intent=%s, source=%s, enabled=%s",
-                intent,
-                source,
-                getattr(smart_agent, "enabled", False),
-            )
-            mode = "baseline_only"
+        # DB-only mode: never call SmartAIAgent here
+        if baseline_answer:
+            final_answer = baseline_answer
+            final_source = baseline_result.get("source", "baseline") if isinstance(baseline_result, dict) else "baseline"
+            final_success = baseline_result.get("success", True) if isinstance(baseline_result, dict) else True
         else:
-            mode = "auto"
-            
-            # Extract history from context if available
-            history = context.get("history", []) if context else []
-            
-            # Extract context_text for smart agent
-            context_text = None
-            if context and isinstance(context.get("text"), str):
-                context_text = context["text"]
-            
-            try:
-                smart_result = await smart_agent.run(
-                    message=message,
-                    baseline_result=baseline_result,
-                    session_id=session_id,
-                    page_url=page_url,
-                    history=history,
-                    context={"text": context_text} if context_text else context,
-                )
-                logger.debug(
-                    "SmartAIAgent.run() returned: success=%s reason=%s",
-                    smart_result.get("success"),
-                    smart_result.get("reason"),
-                )
+            # No data in DB - return fixed Farsi message
+            final_answer = (
+                "برای این سؤال در حال حاضر هیچ پاسخی در داده‌های ثبت‌شده ندارم. "
+                "لطفاً سؤال را به شکل دیگری مطرح کنید یا با پشتیبانی تماس بگیرید."
+            )
+            final_source = "fallback"
+            final_success = False
 
-                if smart_result.get("success"):
-                    final_answer = smart_result["answer"]
-                    final_source = "smart_agent"
-                else:
-                    logger.info("SmartAIAgent failed or returned unsuccessfully. Using baseline answer.")
-                    final_answer = baseline_result["answer"]
-                    final_source = baseline_result.get("source", "baseline")
-            except Exception as e:
-                logger.exception("ChatOrchestrator: error when calling SmartAIAgent: %s", e)
-                smart_result = {
-                    "answer": None,
-                    "success": False,
-                    "reason": "llm_error",
-                    "error": str(e),
-                }
-                logger.info("SmartAIAgent exception. Using baseline answer.")
-                final_answer = baseline_result["answer"]
-                final_source = baseline_result.get("source", "baseline")
-                mode = "baseline_exception"
+        logger.info(
+            "DB-only mode: using baseline answer. source=%s, has_answer=%s",
+            final_source,
+            bool(baseline_answer),
+        )
 
         debug_info = {
             "baseline_raw": baseline_result,
-            "smart_agent_raw": smart_result,
+            "smart_agent_raw": None,  # Never called in DB-only mode
             "mode": mode,
-            "matched_ids": baseline_result.get("matched_ids", []),
-            "metadata": baseline_result.get("metadata", {}),
+            "matched_ids": baseline_result.get("matched_ids", []) if isinstance(baseline_result, dict) else [],
+            "metadata": baseline_result.get("metadata", {}) if isinstance(baseline_result, dict) else {},
         }
 
         # خروجی نهایی سازگار با ساختار فعلی /api/chat
         return {
             "answer": final_answer,
             "debug_info": debug_info,
-            "intent": baseline_result.get("intent"),
-            "confidence": baseline_result.get("confidence", 0.0),
-            "context": str(baseline_result.get("metadata", {})),
-            "intent_match": baseline_result.get("success", False),
+            "intent": baseline_result.get("intent") if isinstance(baseline_result, dict) else None,
+            "confidence": baseline_result.get("confidence", 0.0) if isinstance(baseline_result, dict) else 0.0,
+            "context": str(baseline_result.get("metadata", {})) if isinstance(baseline_result, dict) else "{}",
+            "intent_match": baseline_result.get("success", False) if isinstance(baseline_result, dict) else False,
             "source": final_source,
             "success": final_success,
-            "matched_faq_id": baseline_result.get("matched_faq_id"),
+            "matched_faq_id": baseline_result.get("matched_faq_id") if isinstance(baseline_result, dict) else None,
             "question": message,
-            "category": baseline_result.get("category"),
-            "score": baseline_result.get("score", 0.0),
+            "category": baseline_result.get("category") if isinstance(baseline_result, dict) else None,
+            "score": baseline_result.get("score", 0.0) if isinstance(baseline_result, dict) else 0.0,
         }
 
     async def route_message(
