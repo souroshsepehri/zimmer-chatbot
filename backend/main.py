@@ -6,12 +6,13 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_PATH = os.path.join(BASE_DIR, ".env")
 load_dotenv(ENV_PATH)
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from pathlib import Path
+from datetime import datetime, timedelta
 from core.db import engine, Base
 from routers import chat, faqs, logs, smart_chat, simple_chat, external_api, debug, smart_agent, api_integration, admin, admin_bot_settings, admin_sites
 from core.config import settings
@@ -31,6 +32,12 @@ app = FastAPI(
     description="A Persian chatbot with FAQ management and semantic search",
     version="1.0.0"
 )
+
+# Admin authentication constants
+ADMIN_USERNAME = "zimmer admin"
+ADMIN_PASSWORD = "admin1234"
+ADMIN_SESSION_COOKIE = "admin_session"
+ADMIN_SESSION_TIMEOUT_MINUTES = 5
 
 # Add CORS middleware - Allow all origins for development
 # In production, specify exact origins
@@ -59,36 +66,58 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add SessionMiddleware for admin authentication
+# Add SessionMiddleware for backward compatibility with existing admin router
+# (The router uses request.session, but our new auth uses cookies)
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.getenv("SESSION_SECRET_KEY", "CHANGE_THIS_SESSION_SECRET"),
     session_cookie="zimmer_admin_session",
-    max_age=None,  # we'll control inactivity manually
+    max_age=None,
 )
 
-# Admin authentication middleware
-from fastapi import Request
-from fastapi.responses import RedirectResponse
-from core.admin_auth import is_admin_authenticated
-
+# Admin authentication middleware (cookie-based)
 @app.middleware("http")
 async def admin_auth_middleware(request: Request, call_next):
     path = request.url.path
 
-    # Allow login page itself and static files
-    if path.startswith("/admin/login") or path.startswith("/static"):
+    # Let health, API and static files pass
+    if path.startswith("/health") or path.startswith("/api") or path.startswith("/static"):
         return await call_next(request)
 
-    # Only protect /admin* and /api/admin* paths
-    if path.startswith("/admin") or path.startswith("/api/admin"):
-        authenticated, expired = is_admin_authenticated(request)
-        if not authenticated:
-            # Always redirect to login if not authenticated or expired
-            return RedirectResponse(url="/admin/login", status_code=303)
+    # Allow login page itself without session
+    if path.startswith("/admin/login"):
+        return await call_next(request)
 
-    response = await call_next(request)
-    return response
+    # Protect all other /admin paths
+    if path.startswith("/admin"):
+        session_cookie = request.cookies.get(ADMIN_SESSION_COOKIE)
+        if not session_cookie:
+            return RedirectResponse(url="/admin/login", status_code=302)
+
+        try:
+            last_active = datetime.fromisoformat(session_cookie)
+        except ValueError:
+            resp = RedirectResponse(url="/admin/login", status_code=302)
+            resp.delete_cookie(ADMIN_SESSION_COOKIE, path="/admin")
+            return resp
+
+        if datetime.utcnow() - last_active > timedelta(minutes=ADMIN_SESSION_TIMEOUT_MINUTES):
+            resp = RedirectResponse(url="/admin/login", status_code=302)
+            resp.delete_cookie(ADMIN_SESSION_COOKIE, path="/admin")
+            return resp
+
+        # Session valid -> refresh timestamp
+        response = await call_next(request)
+        response.set_cookie(
+            ADMIN_SESSION_COOKIE,
+            datetime.utcnow().isoformat(),
+            httponly=True,
+            path="/admin",
+        )
+        return response
+
+    # Non-admin routes: normal behavior
+    return await call_next(request)
 
 # Include routers
 app.include_router(chat.router, prefix="/api", tags=["chat"])
@@ -301,6 +330,186 @@ async def root():
     return HTMLResponse(content=html_content)
 
 
+# Admin login routes
+@app.get("/admin/login", response_class=HTMLResponse)
+async def admin_login_form():
+    return """
+    <!DOCTYPE html>
+    <html lang="fa" dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <title>ورود مدیر زیمر</title>
+        <style>
+            body {
+                font-family: sans-serif;
+                background: #f5f5f5;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+            }
+            .card {
+                background: white;
+                padding: 24px 32px;
+                border-radius: 12px;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+                min-width: 320px;
+            }
+            .card h1 {
+                font-size: 20px;
+                margin-bottom: 16px;
+                text-align: center;
+            }
+            .field {
+                margin-bottom: 12px;
+            }
+            .field label {
+                display: block;
+                margin-bottom: 4px;
+                font-size: 14px;
+            }
+            .field input {
+                width: 100%;
+                padding: 8px 10px;
+                border-radius: 6px;
+                border: 1px solid #ccc;
+                font-size: 14px;
+            }
+            button {
+                width: 100%;
+                padding: 10px;
+                border-radius: 6px;
+                border: none;
+                background: #667eea;
+                color: white;
+                font-size: 14px;
+                cursor: pointer;
+            }
+            button:hover {
+                background: #5564c8;
+            }
+            .error {
+                color: #c0392b;
+                margin-bottom: 8px;
+                font-size: 13px;
+                text-align: center;
+            }
+        </style>
+    </head>
+    <body>
+        <form class="card" method="post" action="/admin/login">
+            <h1>ورود مدیر زیمر</h1>
+            <div class="field">
+                <label>نام کاربری</label>
+                <input type="text" name="username" />
+            </div>
+            <div class="field">
+                <label>رمز عبور</label>
+                <input type="password" name="password" />
+            </div>
+            <button type="submit">ورود</button>
+        </form>
+    </body>
+    </html>
+    """
+
+
+@app.post("/admin/login", response_class=HTMLResponse)
+async def admin_login_submit(username: str = Form(...), password: str = Form(...)):
+    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        resp = RedirectResponse(url="/admin", status_code=302)
+        resp.set_cookie(
+            ADMIN_SESSION_COOKIE,
+            datetime.utcnow().isoformat(),
+            httponly=True,
+            path="/admin",
+        )
+        return resp
+
+    # Invalid credentials -> show same form with error message
+    html = """
+    <!DOCTYPE html>
+    <html lang="fa" dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <title>ورود مدیر زیمر</title>
+        <style>
+            body {
+                font-family: sans-serif;
+                background: #f5f5f5;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+            }
+            .card {
+                background: white;
+                padding: 24px 32px;
+                border-radius: 12px;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+                min-width: 320px;
+            }
+            .card h1 {
+                font-size: 20px;
+                margin-bottom: 16px;
+                text-align: center;
+            }
+            .field {
+                margin-bottom: 12px;
+            }
+            .field label {
+                display: block;
+                margin-bottom: 4px;
+                font-size: 14px;
+            }
+            .field input {
+                width: 100%;
+                padding: 8px 10px;
+                border-radius: 6px;
+                border: 1px solid #ccc;
+                font-size: 14px;
+            }
+            button {
+                width: 100%;
+                padding: 10px;
+                border-radius: 6px;
+                border: none;
+                background: #667eea;
+                color: white;
+                font-size: 14px;
+                cursor: pointer;
+            }
+            button:hover {
+                background: #5564c8;
+            }
+            .error {
+                color: #c0392b;
+                margin-bottom: 8px;
+                font-size: 13px;
+                text-align: center;
+            }
+        </style>
+    </head>
+    <body>
+        <form class="card" method="post" action="/admin/login">
+            <h1>ورود مدیر زیمر</h1>
+            <div class="error">نام کاربری یا رمز عبور اشتباه است.</div>
+            <div class="field">
+                <label>نام کاربری</label>
+                <input type="text" name="username" />
+            </div>
+            <div class="field">
+                <label>رمز عبور</label>
+                <input type="password" name="password" />
+            </div>
+            <button type="submit">ورود</button>
+        </form>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html, status_code=401)
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
@@ -366,4 +575,20 @@ if __name__ == "__main__":
         print(f"ℹ️  Using port {port} instead of {original_port}")
     
     uvicorn.run(app, host=host, port=port)
+
+
+# ============================================================================
+# Testing Instructions (run these commands on the server):
+# ============================================================================
+# cd /home/chatbot/chatbot2/backend
+# source venv/bin/activate
+# uvicorn main:app --reload
+#
+# Then test:
+# 1. Open /admin → it should redirect to /admin/login
+# 2. Enter username "zimmer admin" and password "admin1234" → 
+#    it should redirect to /admin and show the existing admin panel
+# 3. Wait more than 5 minutes without clicking anything on admin, 
+#    then reload /admin → it should redirect to /admin/login again
+# ============================================================================
 

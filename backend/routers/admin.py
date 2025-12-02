@@ -26,47 +26,8 @@ templates_dir = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=str(templates_dir))
 
 
-@router.get("/admin/login", response_class=HTMLResponse)
-async def admin_login_page(request: Request):
-    """Show the admin login form"""
-    authenticated, expired = is_admin_authenticated(request)
-    if authenticated:
-        # already logged in -> go to /admin
-        return RedirectResponse(url="/admin", status_code=303)
-    
-    error = None
-    if expired:
-        error = "Session expired due to inactivity. Please login again."
-    
-    return templates.TemplateResponse(
-        "admin_login.html",
-        {"request": request, "error": error},
-    )
-
-
-@router.post("/admin/login", response_class=HTMLResponse)
-async def admin_login_submit(
-    request: Request,
-    username: str = Form(...),
-    password: str = Form(...),
-):
-    """Handle admin login POST request"""
-    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-        login_admin(request)
-        return RedirectResponse(url="/admin", status_code=303)
-    
-    error = "Invalid username or password"
-    return templates.TemplateResponse(
-        "admin_login.html",
-        {"request": request, "error": error},
-    )
-
-
-@router.get("/admin/logout")
-async def admin_logout(request: Request):
-    """Logout admin user"""
-    logout_admin(request)
-    return RedirectResponse(url="/admin/login", status_code=303)
+# Login routes are now handled in main.py with cookie-based authentication
+# Removed to avoid conflicts
 
 
 @router.get("/admin", response_class=HTMLResponse)
