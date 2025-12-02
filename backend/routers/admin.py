@@ -17,7 +17,7 @@ SESSION_COOKIE_MAX_AGE = 300  # seconds (5 minutes)
 # --- Admin panel file path ---
 # Adjust this path if your static directory is different
 BASE_DIR = Path(__file__).resolve().parent.parent
-ADMIN_PANEL_PATH = BASE_DIR / "static" / "admin_panel.html"
+ADMIN_PANEL_PATH = BASE_DIR / "static" / "admin_panel_new.html"
 
 
 def is_admin_authenticated(request: Request) -> bool:
