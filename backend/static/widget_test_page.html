@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تست ویجت چت بات - Test Site</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+            direction: rtl;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-right: 4px solid #2196F3;
+        }
+        .info h3 {
+            margin-top: 0;
+            color: #1976D2;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #555;
+        }
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 تست ویجت چت بات</h1>
+        
+        <div class="info">
+            <h3>📋 اطلاعات تست</h3>
+            <p><strong>دامنه فعلی:</strong> <code id="currentHost">در حال بارگذاری...</code></p>
+            <p><strong>API Base URL:</strong> <code id="apiBaseUrl">در حال بارگذاری...</code></p>
+            <p><strong>Site Host:</strong> <code id="siteHost">در حال بارگذاری...</code></p>
+        </div>
+        
+        <div class="test-section">
+            <h3>✅ وضعیت ویجت</h3>
+            <div id="widgetStatus" class="status info">در حال بررسی...</div>
+        </div>
+        
+        <div class="test-section">
+            <h3>📝 دستورالعمل تست</h3>
+            <ol>
+                <li>مطمئن شوید که سرور بک‌اند روی <code>http://localhost:8001</code> در حال اجرا است</li>
+                <li>در پنل ادمین، یک سایت با دامنه <code>testsite.com</code> اضافه کنید</li>
+                <li>ویجت چت بات باید در پایین سمت راست صفحه نمایش داده شود</li>
+                <li>یک سوال مرتبط با سایت بپرسید و بررسی کنید که فقط از دیتابیس/سایت جواب می‌دهد</li>
+                <li>یک سوال نامربوط بپرسید و بررسی کنید که پیام fallback نمایش داده می‌شود</li>
+            </ol>
+        </div>
+        
+        <div class="test-section">
+            <h3>🔍 تست API مستقیم</h3>
+            <p>می‌توانید از curl یا Postman برای تست مستقیم API استفاده کنید:</p>
+            <pre style="background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto;"><code>curl -X POST http://localhost:8001/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "channel": "website-widget",
+    "user_id": "test-user",
+    "message": "یک سوال درباره محتوای همین سایت تست",
+    "site_host": "testsite.com"
+  }'</code></pre>
+        </div>
+    </div>
+    
+    <!-- Zimmer Chatbot Widget Snippet -->
+    <div id="zimmer-chatbot-root"></div>
+    <script>
+        (function () {
+            // Get current host
+            const currentHost = window.location.host;
+            const apiBaseUrl = window.location.origin; // Adjust if your API is on different port
+            
+            // Display info
+            document.getElementById('currentHost').textContent = currentHost;
+            document.getElementById('apiBaseUrl').textContent = apiBaseUrl;
+            document.getElementById('siteHost').textContent = currentHost;
+            
+            // Configure widget
+            window.ZIMMER_CHATBOT_CONFIG = {
+                apiBaseUrl: apiBaseUrl,
+                siteId: currentHost
+            };
+            
+            // Load widget script
+            var script = document.createElement("script");
+            script.src = apiBaseUrl + "/static/chatbot-widget.js";
+            script.async = true;
+            script.onload = function() {
+                document.getElementById('widgetStatus').className = 'status success';
+                document.getElementById('widgetStatus').textContent = '✓ ویجت با موفقیت بارگذاری شد';
+            };
+            script.onerror = function() {
+                document.getElementById('widgetStatus').className = 'status error';
+                document.getElementById('widgetStatus').textContent = '✗ خطا در بارگذاری ویجت. مطمئن شوید سرور در حال اجرا است.';
+            };
+            document.head.appendChild(script);
+        })();
+    </script>
+</body>
+</html>
+
+

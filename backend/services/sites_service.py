@@ -72,3 +72,4 @@ def extract_domain_from_url(url: str) -> str:
     """
     return TrackedSite.normalize_host(url)
 
+

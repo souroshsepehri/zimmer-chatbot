@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, Form
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import Optional
@@ -8,13 +9,73 @@ from pathlib import Path
 from models.log import ChatLog
 from models.faq import FAQ, Category
 from core.db import get_db
+from core.admin_auth import (
+    require_admin, 
+    login_admin, 
+    logout_admin,
+    is_admin_authenticated,
+    ADMIN_USERNAME, 
+    ADMIN_PASSWORD
+)
 
 router = APIRouter()
 
+# Initialize Jinja2 templates
+# Templates directory is at backend/templates relative to this file (backend/routers/admin.py)
+templates_dir = Path(__file__).parent.parent / "templates"
+templates = Jinja2Templates(directory=str(templates_dir))
+
+
+@router.get("/admin/login", response_class=HTMLResponse)
+async def admin_login_page(request: Request):
+    """Show the admin login form"""
+    authenticated, expired = is_admin_authenticated(request)
+    if authenticated:
+        # already logged in -> go to /admin
+        return RedirectResponse(url="/admin", status_code=303)
+    
+    error = None
+    if expired:
+        error = "Session expired due to inactivity. Please login again."
+    
+    return templates.TemplateResponse(
+        "admin_login.html",
+        {"request": request, "error": error},
+    )
+
+
+@router.post("/admin/login", response_class=HTMLResponse)
+async def admin_login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+):
+    """Handle admin login POST request"""
+    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        login_admin(request)
+        return RedirectResponse(url="/admin", status_code=303)
+    
+    error = "Invalid username or password"
+    return templates.TemplateResponse(
+        "admin_login.html",
+        {"request": request, "error": error},
+    )
+
+
+@router.get("/admin/logout")
+async def admin_logout(request: Request):
+    """Logout admin user"""
+    logout_admin(request)
+    return RedirectResponse(url="/admin/login", status_code=303)
+
 
 @router.get("/admin", response_class=HTMLResponse)
-async def admin_panel():
+async def admin_panel(request: Request):
     """Serve the admin panel HTML"""
+    authenticated, expired = is_admin_authenticated(request)
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=302)
+    
     admin_panel_path = Path(__file__).parent.parent / "static" / "admin_panel.html"
     if admin_panel_path.exists():
         return FileResponse(admin_panel_path)
@@ -23,8 +84,12 @@ async def admin_panel():
 
 
 @router.get("/admin/faqs", response_class=HTMLResponse)
-async def admin_faqs():
+async def admin_faqs(request: Request):
     """Serve the FAQ management page"""
+    authenticated, expired = is_admin_authenticated(request)
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=302)
+    
     faqs_path = Path(__file__).parent.parent / "static" / "admin_faqs.html"
     if faqs_path.exists():
         return FileResponse(faqs_path)
@@ -33,8 +98,12 @@ async def admin_faqs():
 
 
 @router.get("/admin/categories", response_class=HTMLResponse)
-async def admin_categories():
+async def admin_categories(request: Request):
     """Serve the categories management page"""
+    authenticated, expired = is_admin_authenticated(request)
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=302)
+    
     categories_path = Path(__file__).parent.parent / "static" / "admin_categories.html"
     if categories_path.exists():
         return FileResponse(categories_path)
@@ -43,8 +112,12 @@ async def admin_categories():
 
 
 @router.get("/admin/logs", response_class=HTMLResponse)
-async def admin_logs():
+async def admin_logs(request: Request):
     """Serve the logs/reports page"""
+    authenticated, expired = is_admin_authenticated(request)
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=302)
+    
     logs_path = Path(__file__).parent.parent / "static" / "admin_logs.html"
     if logs_path.exists():
         return FileResponse(logs_path)
@@ -53,8 +126,15 @@ async def admin_logs():
 
 
 @router.get("/admin/stats")
-async def get_admin_stats(db: Session = Depends(get_db)):
+async def get_admin_stats(
+    request: Request,
+    db: Session = Depends(get_db)
+):
     """Get comprehensive admin statistics"""
+    authenticated, expired = is_admin_authenticated(request)
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=302)
+    
     try:
         # Total questions/chats
         total_questions = db.query(ChatLog).count()
@@ -107,8 +187,15 @@ async def get_admin_stats(db: Session = Depends(get_db)):
 
 
 @router.get("/admin/dashboard-stats")
-async def get_dashboard_stats(db: Session = Depends(get_db)):
+async def get_dashboard_stats(
+    request: Request,
+    db: Session = Depends(get_db)
+):
     """Get dashboard statistics for the admin panel"""
+    authenticated, expired = is_admin_authenticated(request)
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=302)
+    
     try:
         # Basic counts
         total_faqs = db.query(FAQ).count()
@@ -144,10 +231,15 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
 
 @router.get("/admin/recent-logs")
 async def get_recent_logs(
+    request: Request,
     limit: int = 10,
     db: Session = Depends(get_db)
 ):
     """Get recent chat logs"""
+    authenticated, expired = is_admin_authenticated(request)
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=302)
+    
     try:
         logs = db.query(ChatLog).order_by(desc(ChatLog.timestamp)).limit(limit).all()
         return {

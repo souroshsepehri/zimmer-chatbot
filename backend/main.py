@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 from pathlib import Path
 from core.db import engine, Base
 from routers import chat, faqs, logs, smart_chat, simple_chat, external_api, debug, smart_agent, api_integration, admin, admin_bot_settings, admin_sites
@@ -57,6 +58,37 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add SessionMiddleware for admin authentication
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SESSION_SECRET_KEY", "CHANGE_THIS_SESSION_SECRET"),
+    session_cookie="zimmer_admin_session",
+    max_age=None,  # we'll control inactivity manually
+)
+
+# Admin authentication middleware
+from fastapi import Request
+from fastapi.responses import RedirectResponse
+from core.admin_auth import is_admin_authenticated
+
+@app.middleware("http")
+async def admin_auth_middleware(request: Request, call_next):
+    path = request.url.path
+
+    # Allow login page itself and static files
+    if path.startswith("/admin/login") or path.startswith("/static"):
+        return await call_next(request)
+
+    # Only protect /admin* and /api/admin* paths
+    if path.startswith("/admin") or path.startswith("/api/admin"):
+        authenticated, expired = is_admin_authenticated(request)
+        if not authenticated:
+            # Always redirect to login if not authenticated or expired
+            return RedirectResponse(url="/admin/login", status_code=303)
+
+    response = await call_next(request)
+    return response
 
 # Include routers
 app.include_router(chat.router, prefix="/api", tags=["chat"])

@@ -4,7 +4,7 @@ Admin Sites API
 CRUD endpoints for managing tracked sites used by the Smart Agent.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -16,6 +16,7 @@ from schemas.tracked_site import (
     TrackedSiteRead,
 )
 from services.sites_service import extract_domain_from_url
+from core.admin_auth import require_admin
 
 router = APIRouter(
     prefix="/api/admin/sites",
@@ -24,7 +25,7 @@ router = APIRouter(
 
 
 @router.get("", response_model=List[TrackedSiteRead])
-def list_sites(db: Session = Depends(get_db)):
+def list_sites(request: Request, _: None = Depends(require_admin), db: Session = Depends(get_db)):
     """
     Get list of all tracked sites.
     
@@ -36,7 +37,7 @@ def list_sites(db: Session = Depends(get_db)):
 
 
 @router.get("/{site_id}", response_model=TrackedSiteRead)
-def get_site(site_id: int, db: Session = Depends(get_db)):
+def get_site(site_id: int, request: Request, _: None = Depends(require_admin), db: Session = Depends(get_db)):
     """
     Get a single tracked site by ID.
     
@@ -56,7 +57,7 @@ def get_site(site_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=TrackedSiteRead)
-def create_site(payload: TrackedSiteCreate, db: Session = Depends(get_db)):
+def create_site(payload: TrackedSiteCreate, request: Request, _: None = Depends(require_admin), db: Session = Depends(get_db)):
     """
     Create a new tracked site.
     
@@ -96,6 +97,8 @@ def create_site(payload: TrackedSiteCreate, db: Session = Depends(get_db)):
 def update_site(
     site_id: int,
     payload: TrackedSiteUpdate,
+    request: Request,
+    _: None = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """
@@ -138,7 +141,7 @@ def update_site(
 
 
 @router.delete("/{site_id}")
-def delete_site(site_id: int, db: Session = Depends(get_db)):
+def delete_site(site_id: int, request: Request, _: None = Depends(require_admin), db: Session = Depends(get_db)):
     """
     Delete a tracked site.
     
