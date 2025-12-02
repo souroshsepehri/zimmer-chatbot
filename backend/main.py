@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from core.db import engine, Base
 from routers import chat, faqs, logs, smart_chat, simple_chat, external_api, debug, smart_agent, api_integration, admin, admin_bot_settings, admin_sites
+from routers.admin import verify_admin_credentials
 from core.config import settings
 
 # Import smart_agent early to ensure it's initialized with the loaded env vars
@@ -188,35 +189,37 @@ async def admin_login_submit(
     username: str = Form(...),
     password: str = Form(...),
 ):
-    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-        # Successful login → set cookie and redirect to /admin
-        response = RedirectResponse(url="/admin", status_code=302)
-        response.set_cookie(
-            ADMIN_SESSION_COOKIE,
-            ADMIN_SESSION_VALUE,
-            max_age=ADMIN_SESSION_MAX_AGE,
-            httponly=True,
-            secure=False,  # set to True if you strictly serve over HTTPS
-            samesite="lax",
-            path="/admin",
+    if not verify_admin_credentials(username, password):
+        # Wrong credentials: return the 401 error page as before
+        return HTMLResponse(
+            """
+            <!DOCTYPE html>
+            <html lang="fa" dir="rtl">
+            <head>
+                <meta charset="UTF-8" />
+                <title>ورود مدیر زیمر</title>
+            </head>
+            <body>
+                <p style="color:#b91c1c; text-align:center;">نام کاربری یا رمز عبور اشتباه است.</p>
+                <p style="text-align:center;"><a href="/admin/login">بازگشت به صفحه ورود</a></p>
+            </body>
+            </html>
+            """,
+            status_code=401,
         )
-        return response
 
-    # Invalid credentials → return the same form with an error message
-    html = """
-    <!DOCTYPE html>
-    <html lang="fa" dir="rtl">
-    <head>
-        <meta charset="UTF-8" />
-        <title>ورود مدیر زیمر</title>
-    </head>
-    <body>
-        <p style="color:#b91c1c; text-align:center;">نام کاربری یا رمز عبور اشتباه است.</p>
-        <p style="text-align:center;"><a href="/admin/login">بازگشت به صفحه ورود</a></p>
-    </body>
-    </html>
-    """
-    return HTMLResponse(html, status_code=401)
+    # Successful login → set cookie and redirect to /admin
+    response = RedirectResponse(url="/admin", status_code=302)
+    response.set_cookie(
+        ADMIN_SESSION_COOKIE,
+        ADMIN_SESSION_VALUE,
+        max_age=ADMIN_SESSION_MAX_AGE,
+        httponly=True,
+        secure=False,  # set to True if you strictly serve over HTTPS
+        samesite="lax",
+        path="/admin",
+    )
+    return response
 
 
 @app.get("/admin/logout")

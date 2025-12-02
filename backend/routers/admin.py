@@ -18,6 +18,20 @@ from core.admin_auth import (
     ADMIN_PASSWORD
 )
 
+# Admin credentials constants
+ADMIN_USERNAME_MAIN = "zimmer_admin"
+ADMIN_USERNAME_ALT = "zimmer admin"
+ADMIN_PASSWORD = "admin1234"
+
+def verify_admin_credentials(username: str, password: str) -> bool:
+    # Normalize username to avoid whitespace and case issues
+    normalized = username.strip().lower()
+    allowed_usernames = {
+        ADMIN_USERNAME_MAIN.lower(),
+        ADMIN_USERNAME_ALT.lower(),
+    }
+    return (normalized in allowed_usernames) and (password == ADMIN_PASSWORD)
+
 router = APIRouter()
 
 # Initialize Jinja2 templates
