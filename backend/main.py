@@ -13,7 +13,6 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from core.db import engine, Base
 from routers import chat, faqs, logs, smart_chat, simple_chat, external_api, debug, smart_agent, api_integration, admin, admin_bot_settings, admin_sites
-from routers.admin import verify_admin_credentials
 from core.config import settings
 
 # Import smart_agent early to ensure it's initialized with the loaded env vars
@@ -189,7 +188,7 @@ async def admin_login_submit(
     username: str = Form(...),
     password: str = Form(...),
 ):
-    if not verify_admin_credentials(username, password):
+    if username != ADMIN_USERNAME or password != ADMIN_PASSWORD:
         # Wrong credentials: return the 401 error page as before
         return HTMLResponse(
             """
