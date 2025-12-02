@@ -10,9 +10,7 @@ from fastapi import FastAPI, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.sessions import SessionMiddleware
 from pathlib import Path
-from datetime import datetime, timedelta
 from core.db import engine, Base
 from routers import chat, faqs, logs, smart_chat, simple_chat, external_api, debug, smart_agent, api_integration, admin, admin_bot_settings, admin_sites
 from core.config import settings
@@ -36,8 +34,10 @@ app = FastAPI(
 # Admin authentication constants
 ADMIN_USERNAME = "zimmer admin"
 ADMIN_PASSWORD = "admin1234"
-ADMIN_SESSION_COOKIE = "admin_session"
-ADMIN_SESSION_TIMEOUT_MINUTES = 5
+
+ADMIN_SESSION_COOKIE = "zimmer_admin_session"
+ADMIN_SESSION_VALUE = "zimmer_admin_active"
+ADMIN_SESSION_MAX_AGE = 300  # 5 minutes
 
 # Add CORS middleware - Allow all origins for development
 # In production, specify exact origins
@@ -66,67 +66,50 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add SessionMiddleware for backward compatibility with existing admin router
-# (The router uses request.session, but our new auth uses cookies)
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=os.getenv("SESSION_SECRET_KEY", "CHANGE_THIS_SESSION_SECRET"),
-    session_cookie="zimmer_admin_session",
-    max_age=None,
-)
-
 # Admin authentication middleware (cookie-based)
 @app.middleware("http")
 async def admin_auth_middleware(request: Request, call_next):
     path = request.url.path
 
-    # Allow health, API and static without auth
-    if path.startswith("/health") or path.startswith("/api") or path.startswith("/static"):
-        return await call_next(request)
+    is_admin_path = path.startswith("/admin")
+    is_login_path = path.startswith("/admin/login")
 
-    # Allow login page without session
-    if path.startswith("/admin/login"):
-        return await call_next(request)
+    # Read current session cookie
+    session = request.cookies.get(ADMIN_SESSION_COOKIE)
 
-    # Protect all other /admin paths
-    if path.startswith("/admin"):
-        session_cookie = request.cookies.get(ADMIN_SESSION_COOKIE)
-        if not session_cookie:
+    # If it's an admin route but not the login page, enforce auth
+    if is_admin_path and not is_login_path:
+        if session != ADMIN_SESSION_VALUE:
+            # Not authenticated → redirect to login
             return RedirectResponse(url="/admin/login", status_code=302)
 
-        try:
-            last_active = datetime.fromisoformat(session_cookie)
-        except ValueError:
-            resp = RedirectResponse(url="/admin/login", status_code=302)
-            resp.delete_cookie(ADMIN_SESSION_COOKIE, path="/admin")
-            return resp
+    # Call the next handler
+    response = await call_next(request)
 
-        if datetime.utcnow() - last_active > timedelta(minutes=ADMIN_SESSION_TIMEOUT_MINUTES):
-            resp = RedirectResponse(url="/admin/login", status_code=302)
-            resp.delete_cookie(ADMIN_SESSION_COOKIE, path="/admin")
-            return resp
-
-        # Session is valid -> refresh timestamp
-        response = await call_next(request)
+    # If the request is for an admin path and session is valid,
+    # refresh the cookie (sliding expiration: 5 minutes from last activity)
+    if is_admin_path and session == ADMIN_SESSION_VALUE:
         response.set_cookie(
             ADMIN_SESSION_COOKIE,
-            datetime.utcnow().isoformat(),
+            ADMIN_SESSION_VALUE,
+            max_age=ADMIN_SESSION_MAX_AGE,
             httponly=True,
+            secure=False,  # if you are already serving via HTTPS and want more security, you can set this to True
+            samesite="lax",
             path="/admin",
         )
-        return response
 
-    # Non-admin routes: normal behavior
-    return await call_next(request)
+    return response
 
 # Admin login routes (defined before routers to ensure they take precedence)
 @app.get("/admin/login", response_class=HTMLResponse)
 async def admin_login_form():
+    # Simple HTML login form (no templates to keep it self-contained)
     return """
     <!DOCTYPE html>
     <html lang="fa" dir="rtl">
     <head>
-        <meta charset="UTF-8">
+        <meta charset="UTF-8" />
         <title>ورود مدیر زیمر</title>
         <style>
             body {
@@ -137,166 +120,110 @@ async def admin_login_form():
                 justify-content: center;
                 height: 100vh;
             }
-            .card {
+            .box {
                 background: white;
-                padding: 24px 32px;
+                padding: 24px 28px;
                 border-radius: 12px;
-                box-shadow: 0 8px 24px rgba(0,0,0,0.08);
-                min-width: 320px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+                width: 320px;
             }
-            .card h1 {
-                font-size: 20px;
+            .box h1 {
+                font-size: 18px;
                 margin-bottom: 16px;
                 text-align: center;
             }
-            .field {
-                margin-bottom: 12px;
-            }
-            .field label {
+            label {
                 display: block;
+                margin-top: 12px;
                 margin-bottom: 4px;
-                font-size: 14px;
+                font-size: 13px;
             }
-            .field input {
+            input[type="text"],
+            input[type="password"] {
                 width: 100%;
                 padding: 8px 10px;
                 border-radius: 6px;
-                border: 1px solid #ccc;
+                border: 1px solid #ddd;
                 font-size: 14px;
             }
             button {
+                margin-top: 16px;
                 width: 100%;
-                padding: 10px;
-                border-radius: 6px;
+                padding: 10px 12px;
+                border-radius: 8px;
                 border: none;
-                background: #667eea;
+                background: #4f46e5;
                 color: white;
                 font-size: 14px;
                 cursor: pointer;
             }
-            button:hover {
-                background: #5564c8;
-            }
             .error {
-                color: #c0392b;
-                margin-bottom: 8px;
+                margin-top: 8px;
+                color: #b91c1c;
                 font-size: 13px;
                 text-align: center;
             }
         </style>
     </head>
     <body>
-        <form class="card" method="post" action="/admin/login">
+        <div class="box">
             <h1>ورود مدیر زیمر</h1>
-            <div class="field">
-                <label>نام کاربری</label>
-                <input type="text" name="username" />
-            </div>
-            <div class="field">
-                <label>رمز عبور</label>
-                <input type="password" name="password" />
-            </div>
-            <button type="submit">ورود</button>
-        </form>
+            <form method="post" action="/admin/login">
+                <label for="username">نام کاربری</label>
+                <input type="text" id="username" name="username" />
+
+                <label for="password">رمز عبور</label>
+                <input type="password" id="password" name="password" />
+
+                <button type="submit">ورود</button>
+            </form>
+        </div>
     </body>
     </html>
     """
 
 
-@app.post("/admin/login", response_class=HTMLResponse)
-async def admin_login_submit(username: str = Form(...), password: str = Form(...)):
+@app.post("/admin/login")
+async def admin_login_submit(
+    username: str = Form(...),
+    password: str = Form(...),
+):
     if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-        resp = RedirectResponse(url="/admin", status_code=302)
-        resp.set_cookie(
+        # Successful login → set cookie and redirect to /admin
+        response = RedirectResponse(url="/admin", status_code=302)
+        response.set_cookie(
             ADMIN_SESSION_COOKIE,
-            datetime.utcnow().isoformat(),
+            ADMIN_SESSION_VALUE,
+            max_age=ADMIN_SESSION_MAX_AGE,
             httponly=True,
+            secure=False,  # set to True if you strictly serve over HTTPS
+            samesite="lax",
             path="/admin",
         )
-        return resp
+        return response
 
-    # Invalid credentials -> show same form with error message
+    # Invalid credentials → return the same form with an error message
     html = """
     <!DOCTYPE html>
     <html lang="fa" dir="rtl">
     <head>
-        <meta charset="UTF-8">
+        <meta charset="UTF-8" />
         <title>ورود مدیر زیمر</title>
-        <style>
-            body {
-                font-family: sans-serif;
-                background: #f5f5f5;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                height: 100vh;
-            }
-            .card {
-                background: white;
-                padding: 24px 32px;
-                border-radius: 12px;
-                box-shadow: 0 8px 24px rgba(0,0,0,0.08);
-                min-width: 320px;
-            }
-            .card h1 {
-                font-size: 20px;
-                margin-bottom: 16px;
-                text-align: center;
-            }
-            .field {
-                margin-bottom: 12px;
-            }
-            .field label {
-                display: block;
-                margin-bottom: 4px;
-                font-size: 14px;
-            }
-            .field input {
-                width: 100%;
-                padding: 8px 10px;
-                border-radius: 6px;
-                border: 1px solid #ccc;
-                font-size: 14px;
-            }
-            button {
-                width: 100%;
-                padding: 10px;
-                border-radius: 6px;
-                border: none;
-                background: #667eea;
-                color: white;
-                font-size: 14px;
-                cursor: pointer;
-            }
-            button:hover {
-                background: #5564c8;
-            }
-            .error {
-                color: #c0392b;
-                margin-bottom: 8px;
-                font-size: 13px;
-                text-align: center;
-            }
-        </style>
     </head>
     <body>
-        <form class="card" method="post" action="/admin/login">
-            <h1>ورود مدیر زیمر</h1>
-            <div class="error">نام کاربری یا رمز عبور اشتباه است.</div>
-            <div class="field">
-                <label>نام کاربری</label>
-                <input type="text" name="username" />
-            </div>
-            <div class="field">
-                <label>رمز عبور</label>
-                <input type="password" name="password" />
-            </div>
-            <button type="submit">ورود</button>
-        </form>
+        <p style="color:#b91c1c; text-align:center;">نام کاربری یا رمز عبور اشتباه است.</p>
+        <p style="text-align:center;"><a href="/admin/login">بازگشت به صفحه ورود</a></p>
     </body>
     </html>
     """
-    return HTMLResponse(content=html, status_code=401)
+    return HTMLResponse(html, status_code=401)
+
+
+@app.get("/admin/logout")
+async def admin_logout():
+    response = RedirectResponse(url="/admin/login", status_code=302)
+    response.delete_cookie(ADMIN_SESSION_COOKIE, path="/admin")
+    return response
 
 
 # Include routers
