@@ -17,7 +17,7 @@ SESSION_COOKIE_MAX_AGE = 300  # seconds (5 minutes)
 # --- Admin panel file path ---
 # Adjust this path if your static directory is different
 BASE_DIR = Path(__file__).resolve().parent.parent
-ADMIN_PANEL_PATH = BASE_DIR / "static" / "admin_panel_new.html"
+ADMIN_PANEL_PATH = BASE_DIR / "static" / "admin_panel.html"
 
 
 def is_admin_authenticated(request: Request) -> bool:
@@ -28,29 +28,34 @@ def is_admin_authenticated(request: Request) -> bool:
 
 @router.get("/admin/login", response_class=HTMLResponse)
 async def admin_login_get(request: Request) -> HTMLResponse:
-    """Render a very simple login form."""
+    """Render the login form (Farsi, RTL)."""
     error = request.query_params.get("error")
     error_html = ""
     if error:
-        error_html = '<p style="color: red;">Invalid username or password.</p>'
+        error_html = """
+        <p style="color:#b91c1c; text-align:center;">
+            نام کاربری یا رمز عبور اشتباه است.
+        </p>
+        """
 
-    # Minimal HTML login form
     html_content = f"""
     <!DOCTYPE html>
-    <html lang="en">
+    <html lang="fa" dir="rtl">
     <head>
         <meta charset="UTF-8" />
-        <title>Zimmer Admin Login</title>
+        <title>ورود مدیر زیمر</title>
     </head>
     <body>
-        <h1>Zimmer Admin Login</h1>
+        <h1 style="text-align:center;">ورود مدیر زیمر</h1>
         {error_html}
-        <form method="post" action="/admin/login">
-            <label for="username">Username:</label>
-            <input type="text" id="username" name="username" /><br /><br />
-            <label for="password">Password:</label>
-            <input type="password" id="password" name="password" /><br /><br />
-            <button type="submit">Login</button>
+        <form method="post" action="/admin/login" style="max-width:320px; margin:0 auto; text-align:right;">
+            <label for="username">نام کاربری:</label><br />
+            <input type="text" id="username" name="username" style="width:100%;" /><br /><br />
+
+            <label for="password">رمز عبور:</label><br />
+            <input type="password" id="password" name="password" style="width:100%;" /><br /><br />
+
+            <button type="submit" style="width:100%;">ورود</button>
         </form>
     </body>
     </html>
@@ -76,7 +81,7 @@ async def admin_login_post(
         )
         return response
 
-    # Invalid credentials: redirect back to login with error
+    # Invalid credentials: redirect back to login with error flag
     return RedirectResponse(
         url="/admin/login?error=1", status_code=status.HTTP_302_FOUND
     )
