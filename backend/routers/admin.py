@@ -75,9 +75,10 @@ async def admin_login_post(
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
             value=SESSION_COOKIE_VALUE,
-            max_age=SESSION_COOKIE_MAX_AGE,  # 5 minutes
+            max_age=SESSION_COOKIE_MAX_AGE,
             httponly=True,
-            samesite="lax",
+            secure=True,
+            samesite="none",
         )
         return response
 
@@ -110,7 +111,8 @@ async def admin_page(request: Request):
         value=SESSION_COOKIE_VALUE,
         max_age=SESSION_COOKIE_MAX_AGE,
         httponly=True,
-        samesite="lax",
+        secure=True,
+        samesite="none",
     )
 
     return response
