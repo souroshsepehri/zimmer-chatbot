@@ -114,3 +114,11 @@ async def admin_page(request: Request):
     )
 
     return response
+
+
+@router.get("/admin/logout")
+async def admin_logout():
+    """Logout handler - clears the admin session cookie."""
+    response = RedirectResponse(url="/admin/login", status_code=status.HTTP_302_FOUND)
+    response.delete_cookie(SESSION_COOKIE_NAME, path="/admin")
+    return response
