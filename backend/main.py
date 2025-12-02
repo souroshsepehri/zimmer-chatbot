@@ -80,11 +80,11 @@ app.add_middleware(
 async def admin_auth_middleware(request: Request, call_next):
     path = request.url.path
 
-    # Let health, API and static files pass
+    # Allow health, API and static without auth
     if path.startswith("/health") or path.startswith("/api") or path.startswith("/static"):
         return await call_next(request)
 
-    # Allow login page itself without session
+    # Allow login page without session
     if path.startswith("/admin/login"):
         return await call_next(request)
 
@@ -106,7 +106,7 @@ async def admin_auth_middleware(request: Request, call_next):
             resp.delete_cookie(ADMIN_SESSION_COOKIE, path="/admin")
             return resp
 
-        # Session valid -> refresh timestamp
+        # Session is valid -> refresh timestamp
         response = await call_next(request)
         response.set_cookie(
             ADMIN_SESSION_COOKIE,
@@ -118,6 +118,186 @@ async def admin_auth_middleware(request: Request, call_next):
 
     # Non-admin routes: normal behavior
     return await call_next(request)
+
+# Admin login routes (defined before routers to ensure they take precedence)
+@app.get("/admin/login", response_class=HTMLResponse)
+async def admin_login_form():
+    return """
+    <!DOCTYPE html>
+    <html lang="fa" dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <title>ورود مدیر زیمر</title>
+        <style>
+            body {
+                font-family: sans-serif;
+                background: #f5f5f5;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+            }
+            .card {
+                background: white;
+                padding: 24px 32px;
+                border-radius: 12px;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+                min-width: 320px;
+            }
+            .card h1 {
+                font-size: 20px;
+                margin-bottom: 16px;
+                text-align: center;
+            }
+            .field {
+                margin-bottom: 12px;
+            }
+            .field label {
+                display: block;
+                margin-bottom: 4px;
+                font-size: 14px;
+            }
+            .field input {
+                width: 100%;
+                padding: 8px 10px;
+                border-radius: 6px;
+                border: 1px solid #ccc;
+                font-size: 14px;
+            }
+            button {
+                width: 100%;
+                padding: 10px;
+                border-radius: 6px;
+                border: none;
+                background: #667eea;
+                color: white;
+                font-size: 14px;
+                cursor: pointer;
+            }
+            button:hover {
+                background: #5564c8;
+            }
+            .error {
+                color: #c0392b;
+                margin-bottom: 8px;
+                font-size: 13px;
+                text-align: center;
+            }
+        </style>
+    </head>
+    <body>
+        <form class="card" method="post" action="/admin/login">
+            <h1>ورود مدیر زیمر</h1>
+            <div class="field">
+                <label>نام کاربری</label>
+                <input type="text" name="username" />
+            </div>
+            <div class="field">
+                <label>رمز عبور</label>
+                <input type="password" name="password" />
+            </div>
+            <button type="submit">ورود</button>
+        </form>
+    </body>
+    </html>
+    """
+
+
+@app.post("/admin/login", response_class=HTMLResponse)
+async def admin_login_submit(username: str = Form(...), password: str = Form(...)):
+    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        resp = RedirectResponse(url="/admin", status_code=302)
+        resp.set_cookie(
+            ADMIN_SESSION_COOKIE,
+            datetime.utcnow().isoformat(),
+            httponly=True,
+            path="/admin",
+        )
+        return resp
+
+    # Invalid credentials -> show same form with error message
+    html = """
+    <!DOCTYPE html>
+    <html lang="fa" dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <title>ورود مدیر زیمر</title>
+        <style>
+            body {
+                font-family: sans-serif;
+                background: #f5f5f5;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+            }
+            .card {
+                background: white;
+                padding: 24px 32px;
+                border-radius: 12px;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+                min-width: 320px;
+            }
+            .card h1 {
+                font-size: 20px;
+                margin-bottom: 16px;
+                text-align: center;
+            }
+            .field {
+                margin-bottom: 12px;
+            }
+            .field label {
+                display: block;
+                margin-bottom: 4px;
+                font-size: 14px;
+            }
+            .field input {
+                width: 100%;
+                padding: 8px 10px;
+                border-radius: 6px;
+                border: 1px solid #ccc;
+                font-size: 14px;
+            }
+            button {
+                width: 100%;
+                padding: 10px;
+                border-radius: 6px;
+                border: none;
+                background: #667eea;
+                color: white;
+                font-size: 14px;
+                cursor: pointer;
+            }
+            button:hover {
+                background: #5564c8;
+            }
+            .error {
+                color: #c0392b;
+                margin-bottom: 8px;
+                font-size: 13px;
+                text-align: center;
+            }
+        </style>
+    </head>
+    <body>
+        <form class="card" method="post" action="/admin/login">
+            <h1>ورود مدیر زیمر</h1>
+            <div class="error">نام کاربری یا رمز عبور اشتباه است.</div>
+            <div class="field">
+                <label>نام کاربری</label>
+                <input type="text" name="username" />
+            </div>
+            <div class="field">
+                <label>رمز عبور</label>
+                <input type="password" name="password" />
+            </div>
+            <button type="submit">ورود</button>
+        </form>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html, status_code=401)
+
 
 # Include routers
 app.include_router(chat.router, prefix="/api", tags=["chat"])
@@ -328,186 +508,6 @@ async def root():
 </html>
     """
     return HTMLResponse(content=html_content)
-
-
-# Admin login routes
-@app.get("/admin/login", response_class=HTMLResponse)
-async def admin_login_form():
-    return """
-    <!DOCTYPE html>
-    <html lang="fa" dir="rtl">
-    <head>
-        <meta charset="UTF-8">
-        <title>ورود مدیر زیمر</title>
-        <style>
-            body {
-                font-family: sans-serif;
-                background: #f5f5f5;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                height: 100vh;
-            }
-            .card {
-                background: white;
-                padding: 24px 32px;
-                border-radius: 12px;
-                box-shadow: 0 8px 24px rgba(0,0,0,0.08);
-                min-width: 320px;
-            }
-            .card h1 {
-                font-size: 20px;
-                margin-bottom: 16px;
-                text-align: center;
-            }
-            .field {
-                margin-bottom: 12px;
-            }
-            .field label {
-                display: block;
-                margin-bottom: 4px;
-                font-size: 14px;
-            }
-            .field input {
-                width: 100%;
-                padding: 8px 10px;
-                border-radius: 6px;
-                border: 1px solid #ccc;
-                font-size: 14px;
-            }
-            button {
-                width: 100%;
-                padding: 10px;
-                border-radius: 6px;
-                border: none;
-                background: #667eea;
-                color: white;
-                font-size: 14px;
-                cursor: pointer;
-            }
-            button:hover {
-                background: #5564c8;
-            }
-            .error {
-                color: #c0392b;
-                margin-bottom: 8px;
-                font-size: 13px;
-                text-align: center;
-            }
-        </style>
-    </head>
-    <body>
-        <form class="card" method="post" action="/admin/login">
-            <h1>ورود مدیر زیمر</h1>
-            <div class="field">
-                <label>نام کاربری</label>
-                <input type="text" name="username" />
-            </div>
-            <div class="field">
-                <label>رمز عبور</label>
-                <input type="password" name="password" />
-            </div>
-            <button type="submit">ورود</button>
-        </form>
-    </body>
-    </html>
-    """
-
-
-@app.post("/admin/login", response_class=HTMLResponse)
-async def admin_login_submit(username: str = Form(...), password: str = Form(...)):
-    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-        resp = RedirectResponse(url="/admin", status_code=302)
-        resp.set_cookie(
-            ADMIN_SESSION_COOKIE,
-            datetime.utcnow().isoformat(),
-            httponly=True,
-            path="/admin",
-        )
-        return resp
-
-    # Invalid credentials -> show same form with error message
-    html = """
-    <!DOCTYPE html>
-    <html lang="fa" dir="rtl">
-    <head>
-        <meta charset="UTF-8">
-        <title>ورود مدیر زیمر</title>
-        <style>
-            body {
-                font-family: sans-serif;
-                background: #f5f5f5;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                height: 100vh;
-            }
-            .card {
-                background: white;
-                padding: 24px 32px;
-                border-radius: 12px;
-                box-shadow: 0 8px 24px rgba(0,0,0,0.08);
-                min-width: 320px;
-            }
-            .card h1 {
-                font-size: 20px;
-                margin-bottom: 16px;
-                text-align: center;
-            }
-            .field {
-                margin-bottom: 12px;
-            }
-            .field label {
-                display: block;
-                margin-bottom: 4px;
-                font-size: 14px;
-            }
-            .field input {
-                width: 100%;
-                padding: 8px 10px;
-                border-radius: 6px;
-                border: 1px solid #ccc;
-                font-size: 14px;
-            }
-            button {
-                width: 100%;
-                padding: 10px;
-                border-radius: 6px;
-                border: none;
-                background: #667eea;
-                color: white;
-                font-size: 14px;
-                cursor: pointer;
-            }
-            button:hover {
-                background: #5564c8;
-            }
-            .error {
-                color: #c0392b;
-                margin-bottom: 8px;
-                font-size: 13px;
-                text-align: center;
-            }
-        </style>
-    </head>
-    <body>
-        <form class="card" method="post" action="/admin/login">
-            <h1>ورود مدیر زیمر</h1>
-            <div class="error">نام کاربری یا رمز عبور اشتباه است.</div>
-            <div class="field">
-                <label>نام کاربری</label>
-                <input type="text" name="username" />
-            </div>
-            <div class="field">
-                <label>رمز عبور</label>
-                <input type="password" name="password" />
-            </div>
-            <button type="submit">ورود</button>
-        </form>
-    </body>
-    </html>
-    """
-    return HTMLResponse(content=html, status_code=401)
 
 
 @app.get("/health")
