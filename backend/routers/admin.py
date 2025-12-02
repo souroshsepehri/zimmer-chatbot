@@ -1,73 +1,187 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Form
+from fastapi import APIRouter, Depends, HTTPException, Request, Form, status
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
-from typing import Optional
 from datetime import datetime, date, timedelta
 from pathlib import Path
 from models.log import ChatLog
 from models.faq import FAQ, Category
 from core.db import get_db
-from core.admin_auth import (
-    require_admin, 
-    login_admin, 
-    logout_admin,
-    is_admin_authenticated,
-    ADMIN_USERNAME, 
-    ADMIN_PASSWORD
-)
-
-# Admin credentials constants
-ADMIN_USERNAME_MAIN = "zimmer_admin"
-ADMIN_USERNAME_ALT = "zimmer admin"
-ADMIN_PASSWORD = "admin1234"
-
-def verify_admin_credentials(username: str, password: str) -> bool:
-    # Normalize username to avoid whitespace and case issues
-    normalized = username.strip().lower()
-    allowed_usernames = {
-        ADMIN_USERNAME_MAIN.lower(),
-        ADMIN_USERNAME_ALT.lower(),
-    }
-    return (normalized in allowed_usernames) and (password == ADMIN_PASSWORD)
 
 router = APIRouter()
 
-# Initialize Jinja2 templates
-# Templates directory is at backend/templates relative to this file (backend/routers/admin.py)
-templates_dir = Path(__file__).parent.parent / "templates"
-templates = Jinja2Templates(directory=str(templates_dir))
+# Admin credentials
+ADMIN_USERNAME = "zimmer_admin"
+ADMIN_PASSWORD = "admin1234"
+ADMIN_SESSION_COOKIE = "zimmer_admin_session"
+ADMIN_SESSION_VALUE = "zimmer_admin_active"
+
+# Static directory path
+STATIC_DIR = Path(__file__).parent.parent / "static"
+ADMIN_PANEL_FILE = STATIC_DIR / "admin_panel.html"
 
 
-# Login routes are now handled in main.py with cookie-based authentication
-# Removed to avoid conflicts
+def require_admin(request: Request):
+    """
+    Helper function to check if user is authenticated as admin.
+    Raises HTTPException with 302 redirect if not authenticated.
+    """
+    session = request.cookies.get(ADMIN_SESSION_COOKIE)
+    if session != ADMIN_SESSION_VALUE:
+        # not logged in
+        raise HTTPException(
+            status_code=status.HTTP_302_FOUND,
+            headers={"Location": "/admin/login"},
+        )
 
 
-@router.get("/admin", response_class=HTMLResponse)
-async def admin_panel(request: Request):
-    """Serve the admin panel HTML"""
-    authenticated, expired = is_admin_authenticated(request)
-    if not authenticated:
-        return RedirectResponse(url="/admin/login", status_code=302)
-    
-    admin_panel_path = Path(__file__).parent.parent / "static" / "admin_panel.html"
-    if admin_panel_path.exists():
-        return FileResponse(admin_panel_path)
+@router.get("/admin/login", response_class=HTMLResponse)
+async def admin_login_form():
+    """Show the simple HTML login form"""
+    return """
+    <!DOCTYPE html>
+    <html lang="fa" dir="rtl">
+    <head>
+        <meta charset="UTF-8" />
+        <title>ورود مدیر زیمر</title>
+        <style>
+            body {
+                font-family: sans-serif;
+                background: #f5f5f5;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+            }
+            .box {
+                background: white;
+                padding: 24px 28px;
+                border-radius: 12px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+                width: 320px;
+            }
+            .box h1 {
+                font-size: 18px;
+                margin-bottom: 16px;
+                text-align: center;
+            }
+            label {
+                display: block;
+                margin-top: 12px;
+                margin-bottom: 4px;
+                font-size: 13px;
+            }
+            input[type="text"],
+            input[type="password"] {
+                width: 100%;
+                padding: 8px 10px;
+                border-radius: 6px;
+                border: 1px solid #ddd;
+                font-size: 14px;
+            }
+            button {
+                margin-top: 16px;
+                width: 100%;
+                padding: 10px 12px;
+                border-radius: 8px;
+                border: none;
+                background: #4f46e5;
+                color: white;
+                font-size: 14px;
+                cursor: pointer;
+            }
+            .error {
+                margin-top: 8px;
+                color: #b91c1c;
+                font-size: 13px;
+                text-align: center;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="box">
+            <h1>ورود مدیر زیمر</h1>
+            <form method="post" action="/admin/login">
+                <label for="username">نام کاربری</label>
+                <input type="text" id="username" name="username" />
+
+                <label for="password">رمز عبور</label>
+                <input type="password" id="password" name="password" />
+
+                <button type="submit">ورود</button>
+            </form>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@router.post("/admin/login")
+async def admin_login_submit(
+    username: str = Form(...),
+    password: str = Form(...),
+):
+    """Handle admin login submission"""
+    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        # Successful login → set cookie and redirect to /admin
+        response = RedirectResponse(url="/admin", status_code=302)
+        response.set_cookie(
+            ADMIN_SESSION_COOKIE,
+            ADMIN_SESSION_VALUE,
+            httponly=True,
+            secure=False,
+            samesite="lax",
+        )
+        return response
     else:
-        return HTMLResponse(content="<h1>Admin panel not found</h1>", status_code=404)
+        # Wrong credentials: return 401 error
+        return HTMLResponse(
+            """
+            <!DOCTYPE html>
+            <html lang="fa" dir="rtl">
+            <head>
+                <meta charset="UTF-8" />
+                <title>ورود مدیر زیمر</title>
+            </head>
+            <body>
+                <p style="color:#b91c1c; text-align:center;">نام کاربری یا رمز عبور اشتباه است.</p>
+                <p style="text-align:center;"><a href="/admin/login">بازگشت به صفحه ورود</a></p>
+            </body>
+            </html>
+            """,
+            status_code=401,
+        )
+
+
+@router.get("/admin")
+async def admin_panel(request: Request):
+    """
+    Admin dashboard entry point.
+    Requires a valid zimmer_admin_session cookie.
+    Serves the static admin_panel.html file.
+    """
+    session = request.cookies.get(ADMIN_SESSION_COOKIE)
+    if session != ADMIN_SESSION_VALUE:
+        # redirect to login
+        return RedirectResponse(url="/admin/login", status_code=302)
+
+    if not ADMIN_PANEL_FILE.exists():
+        # for safety, return a simple message instead of 500
+        return HTMLResponse("admin_panel.html not found on server", status_code=500)
+
+    return FileResponse(str(ADMIN_PANEL_FILE))
 
 
 @router.get("/admin/faqs", response_class=HTMLResponse)
 async def admin_faqs(request: Request):
     """Serve the FAQ management page"""
-    authenticated, expired = is_admin_authenticated(request)
-    if not authenticated:
+    session = request.cookies.get(ADMIN_SESSION_COOKIE)
+    if session != ADMIN_SESSION_VALUE:
         return RedirectResponse(url="/admin/login", status_code=302)
     
-    faqs_path = Path(__file__).parent.parent / "static" / "admin_faqs.html"
+    faqs_path = STATIC_DIR / "admin_faqs.html"
     if faqs_path.exists():
-        return FileResponse(faqs_path)
+        return FileResponse(str(faqs_path))
     else:
         return HTMLResponse(content="<h1>FAQ management page not found</h1>", status_code=404)
 
@@ -75,13 +189,13 @@ async def admin_faqs(request: Request):
 @router.get("/admin/categories", response_class=HTMLResponse)
 async def admin_categories(request: Request):
     """Serve the categories management page"""
-    authenticated, expired = is_admin_authenticated(request)
-    if not authenticated:
+    session = request.cookies.get(ADMIN_SESSION_COOKIE)
+    if session != ADMIN_SESSION_VALUE:
         return RedirectResponse(url="/admin/login", status_code=302)
     
-    categories_path = Path(__file__).parent.parent / "static" / "admin_categories.html"
+    categories_path = STATIC_DIR / "admin_categories.html"
     if categories_path.exists():
-        return FileResponse(categories_path)
+        return FileResponse(str(categories_path))
     else:
         return HTMLResponse(content="<h1>Categories management page not found</h1>", status_code=404)
 
@@ -89,13 +203,13 @@ async def admin_categories(request: Request):
 @router.get("/admin/logs", response_class=HTMLResponse)
 async def admin_logs(request: Request):
     """Serve the logs/reports page"""
-    authenticated, expired = is_admin_authenticated(request)
-    if not authenticated:
+    session = request.cookies.get(ADMIN_SESSION_COOKIE)
+    if session != ADMIN_SESSION_VALUE:
         return RedirectResponse(url="/admin/login", status_code=302)
     
-    logs_path = Path(__file__).parent.parent / "static" / "admin_logs.html"
+    logs_path = STATIC_DIR / "admin_logs.html"
     if logs_path.exists():
-        return FileResponse(logs_path)
+        return FileResponse(str(logs_path))
     else:
         return HTMLResponse(content="<h1>Logs page not found</h1>", status_code=404)
 
@@ -106,8 +220,8 @@ async def get_admin_stats(
     db: Session = Depends(get_db)
 ):
     """Get comprehensive admin statistics"""
-    authenticated, expired = is_admin_authenticated(request)
-    if not authenticated:
+    session = request.cookies.get(ADMIN_SESSION_COOKIE)
+    if session != ADMIN_SESSION_VALUE:
         return RedirectResponse(url="/admin/login", status_code=302)
     
     try:
@@ -167,8 +281,8 @@ async def get_dashboard_stats(
     db: Session = Depends(get_db)
 ):
     """Get dashboard statistics for the admin panel"""
-    authenticated, expired = is_admin_authenticated(request)
-    if not authenticated:
+    session = request.cookies.get(ADMIN_SESSION_COOKIE)
+    if session != ADMIN_SESSION_VALUE:
         return RedirectResponse(url="/admin/login", status_code=302)
     
     try:
@@ -211,8 +325,8 @@ async def get_recent_logs(
     db: Session = Depends(get_db)
 ):
     """Get recent chat logs"""
-    authenticated, expired = is_admin_authenticated(request)
-    if not authenticated:
+    session = request.cookies.get(ADMIN_SESSION_COOKIE)
+    if session != ADMIN_SESSION_VALUE:
         return RedirectResponse(url="/admin/login", status_code=302)
     
     try:
@@ -234,4 +348,3 @@ async def get_recent_logs(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching recent logs: {str(e)}")
-
