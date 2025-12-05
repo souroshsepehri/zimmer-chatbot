@@ -6,13 +6,12 @@ with the admin login system in routers/admin.py.
 """
 
 from fastapi import Request, HTTPException, status
-from typing import Tuple
 
 # Import cookie constants from routers.admin to keep them in sync
 from routers.admin import SESSION_COOKIE_NAME, SESSION_COOKIE_VALUE
 
 
-def is_admin_authenticated(request: Request) -> Tuple[bool, bool]:
+def is_admin_authenticated(request: Request) -> tuple[bool, bool]:
     """
     Returns (authenticated, expired).
 
