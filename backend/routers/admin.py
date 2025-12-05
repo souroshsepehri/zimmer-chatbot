@@ -1,7 +1,11 @@
+import logging
+
 from pathlib import Path
 
 from fastapi import APIRouter, Request, Form, status, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -69,8 +73,14 @@ async def admin_login_post(
     password: str = Form(...),
 ):
     """Handle login form submission."""
+    # Normalize input values
+    username = (username or "").strip()
+    password = (password or "").strip()
+
+    # Temporary debug log
+    logger.info("Admin login attempt with username=%r", username)
+
     if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-        # Successful login: set cookie and redirect to /admin
         response = RedirectResponse(url="/admin", status_code=status.HTTP_302_FOUND)
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
@@ -82,9 +92,9 @@ async def admin_login_post(
         )
         return response
 
-    # Invalid credentials: redirect back to login with error flag
     return RedirectResponse(
-        url="/admin/login?error=1", status_code=status.HTTP_302_FOUND
+        url="/admin/login?error=1",
+        status_code=status.HTTP_302_FOUND,
     )
 
 
