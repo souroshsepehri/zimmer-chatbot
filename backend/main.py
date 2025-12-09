@@ -344,6 +344,15 @@ async def test_database():
         }
 
 
+@app.get("/api/health")
+def health_check():
+    """
+    Simple health check endpoint for admin panel and uptime monitoring.
+    Always returns 200 OK.
+    """
+    return {"status": "ok"}
+
+
 if __name__ == "__main__":
     import uvicorn
     import socket
