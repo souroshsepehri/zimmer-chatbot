@@ -1,18 +1,21 @@
 import json
 import os
 from typing import Dict, Any
+from dotenv import load_dotenv
+from pathlib import Path
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from core.config import settings
 
+# Load .env file to ensure OPENAI_API_KEY is available
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env", override=True)
+
 
 class EnhancedIntentDetector:
     def __init__(self):
-        # Get API key from multiple sources
-        api_key = (
-            os.getenv("OPENAI_API_KEY") or 
-            settings.openai_api_key
-        )
+        # Get API key from environment variable ONLY
+        api_key = os.getenv("OPENAI_API_KEY")
         
         if not api_key or api_key == "":
             raise ValueError("OpenAI API key not found. Please set OPENAI_API_KEY environment variable.")

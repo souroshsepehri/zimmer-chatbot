@@ -4,6 +4,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # OpenAI Configuration
+    # NOTE: openai_api_key field is DEPRECATED and should NOT be used.
+    # All OpenAI clients must use os.getenv("OPENAI_API_KEY") directly from environment.
+    # This field is kept only for backward compatibility but will not be populated from .env
     openai_api_key: str = ""
     openai_model: str = "gpt-3.5-turbo"  # Using GPT-3.5 Turbo model
     embedding_model: str = "text-embedding-3-small"

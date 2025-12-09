@@ -3,18 +3,30 @@ import json
 import pickle
 import numpy as np
 from typing import List, Dict, Any, Optional
+from dotenv import load_dotenv
+from pathlib import Path
 from sqlalchemy.orm import Session
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from models.faq import FAQ
 from core.config import settings
 
+# Load .env file to ensure OPENAI_API_KEY is available
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env", override=True)
+
 
 class FAQRetriever:
     def __init__(self):
+        # Get API key from environment variable ONLY
+        api_key = os.getenv("OPENAI_API_KEY")
+        
+        if not api_key or api_key == "":
+            raise ValueError("OpenAI API key not found. Please set OPENAI_API_KEY environment variable.")
+        
         self.embeddings = OpenAIEmbeddings(
             model=settings.embedding_model,
-            openai_api_key=settings.openai_api_key
+            openai_api_key=api_key
         )
         self.vectorstore_path = settings.vectorstore_path
         self.index_path = os.path.join(self.vectorstore_path, "faiss.index")

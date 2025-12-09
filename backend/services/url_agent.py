@@ -1,5 +1,8 @@
+import os
 import logging
 from typing import List, Dict, Any, Optional
+from dotenv import load_dotenv
+from pathlib import Path
 from sqlalchemy.orm import Session
 from services.web_scraper import get_web_scraper, WebPage
 from services.web_vectorstore import get_web_vectorstore
@@ -9,6 +12,10 @@ from core.config import settings
 from core.db import get_db
 import asyncio
 from datetime import datetime
+
+# Load .env file to ensure OPENAI_API_KEY is available
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env", override=True)
 
 logger = logging.getLogger(__name__)
 
@@ -276,9 +283,15 @@ class URLAgent:
             # Generate answer using OpenAI
             from langchain_openai import ChatOpenAI
             
+            # Get API key from environment variable ONLY
+            api_key = os.getenv("OPENAI_API_KEY")
+            
+            if not api_key or api_key == "":
+                raise ValueError("OpenAI API key not found. Please set OPENAI_API_KEY environment variable.")
+            
             llm = ChatOpenAI(
                 model=settings.openai_model,
-                openai_api_key=settings.openai_api_key,
+                openai_api_key=api_key,
                 temperature=0.3
             )
             
