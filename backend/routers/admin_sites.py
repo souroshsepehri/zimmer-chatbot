@@ -4,9 +4,9 @@ Admin Sites API
 CRUD endpoints for managing tracked sites used by the Smart Agent.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
 from core.db import get_db
 from models.tracked_site import TrackedSite
@@ -16,6 +16,7 @@ from schemas.tracked_site import (
     TrackedSiteRead,
 )
 from services.sites_service import extract_domain_from_url
+from services.website_sync import sync_website
 from core.admin_auth import require_admin
 
 router = APIRouter(
@@ -161,6 +162,65 @@ def delete_site(site_id: int, request: Request, _: None = Depends(require_admin)
     db.delete(obj)
     db.commit()
     return {"success": True}
+
+
+@router.post("/{site_id}/sync")
+async def sync_site(
+    site_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    _: None = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Sync (crawl) pages for a tracked site.
+    
+    This endpoint triggers a background task to crawl the website's pages
+    and store them in the database.
+    
+    Args:
+        site_id: ID of the site to sync
+        background_tasks: FastAPI background tasks
+        
+    Returns:
+        Success message
+        
+    Raises:
+        HTTPException: If site not found
+    """
+    site = db.query(TrackedSite).filter(TrackedSite.id == site_id).first()
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+    
+    # Create a new session for the background task
+    from core.db import SessionLocal
+    import asyncio
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    async def sync_task():
+        """Background task that creates its own DB session"""
+        bg_db = SessionLocal()
+        try:
+            # Re-fetch the site in the new session
+            bg_site = bg_db.query(TrackedSite).filter(TrackedSite.id == site_id).first()
+            if bg_site:
+                await sync_website(bg_db, bg_site)
+        except Exception as e:
+            logger.error(f"Error in background sync task for site {site_id}: {e}", exc_info=True)
+        finally:
+            bg_db.close()
+    
+    # Run sync in background
+    # Use asyncio.create_task to run async function in background
+    # This will run even after the request completes
+    asyncio.create_task(sync_task())
+    
+    return {
+        "success": True,
+        "message": f"Sync started for site {site_id}. Pages will be crawled in the background."
+    }
 
 
 

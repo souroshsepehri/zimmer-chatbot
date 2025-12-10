@@ -92,12 +92,13 @@ class SmartAIAgent:
 
         # MUCH stricter system prompt - only use explicit context/history
         system_prompt = (
-            "تو دستیار هوشمند وب‌سایت Zimmer هستی و فقط مجاز هستی بر اساس اطلاعاتی که در کانتکست و تاریخچهٔ گفتگو (history و context) به تو داده می‌شود پاسخ بدهی. "
-            "به هیچ عنوان از دانش عمومی خودت، اطلاعات اینترنت یا حدس زدن استفاده نکن. "
-            "اگر پاسخ دقیق در کانتکست یا تاریخچه وجود نداشت، فقط و فقط این جمله را برگردان:\n"
-            "«متأسفم، فقط می‌توانم دربارهٔ اطلاعات همین وب‌سایت و داده‌های ثبت‌شده‌اش پاسخ بدهم و برای این سؤال داده‌ای ندارم.»\n"
+            "تو دستیار هوشمند این کسب‌وکار خاص هستی. "
+            "فقط و فقط مجاز هستی از سؤالات متداول (FAQs)، دسته‌بندی‌ها و بخش‌هایی از صفحات وب‌سایت که در کانتکست به تو داده می‌شود استفاده کنی. "
+            "به هیچ عنوان از دانش عمومی خودت، اطلاعات اینترنت، ابزارهای جستجو یا حدس زدن استفاده نکن. "
+            "اگر پاسخ دقیق در متن‌های ارائه‌شده (FAQs، دسته‌بندی‌ها یا صفحات وب‌سایت) وجود نداشت، "
+            "حتماً و حتماً باید بگویی که نمی‌دانی و از کاربر بخواهی با پشتیبانی تماس بگیرد. "
             "اگر سؤال کاربر کاملاً نامرتبط با موضوع وب‌سایت، خدمات یا دیتابیس باشد (مثلاً داستان، جوک، اطلاعات عمومی)، "
-            "دقیقاً همین جملهٔ بالا را برگردان و هیچ چیز دیگری اضافه نکن."
+            "باید بگویی که نمی‌دانی و از کاربر بخواهی با پشتیبانی تماس بگیرد."
         )
 
         # Build messages list
@@ -118,8 +119,27 @@ class SmartAIAgent:
         
         # Add baseline result as context if available
         if baseline_result and isinstance(baseline_result.get("answer"), str):
-            context_parts.append(f"پاسخ اولیه بر اساس دیتابیس/FAQ:\n{baseline_result['answer']}")
-
+            context_parts.append(f"[سؤالات متداول مرتبط]\n{baseline_result['answer']}")
+        
+        # Add website pages from baseline_result metadata if available
+        if baseline_result and isinstance(baseline_result.get("metadata"), dict):
+            metadata = baseline_result["metadata"]
+            website_pages = metadata.get("website_pages", [])
+            if website_pages:
+                pages_text = "[بخش‌هایی از صفحات وب سایت]\n"
+                for page in website_pages[:3]:  # Limit to top 3 pages
+                    title = page.get("title", "بدون عنوان")
+                    url = page.get("url", "")
+                    content = page.get("content", "")
+                    if content:
+                        # Use snippet (first 800-1000 chars)
+                        snippet = content[:1000] if len(content) > 1000 else content
+                        pages_text += f"\nصفحه: {title}\n"
+                        pages_text += f"آدرس: {url}\n"
+                        pages_text += f"متن:\n{snippet}\n"
+                        pages_text += "---\n"
+                context_parts.append(pages_text)
+        
         # Extract context_text from context or kwargs
         context_text = None
         if context and isinstance(context.get("text"), str):
@@ -136,9 +156,10 @@ class SmartAIAgent:
         if context_parts:
             context_str = "\n\n".join(context_parts)
             user_content = (
-                "متن زیر کانتکست و اطلاعات موجود از سیستم است. "
-                "فقط بر اساس این اطلاعات پاسخ بده و اگر پاسخ نبود، همان جملهٔ عدم دسترسی به داده را برگردان.\n\n"
-                f"کانتکست:\n{context_str}\n\n"
+                "متن زیر شامل اطلاعات موجود از سیستم است (سؤالات متداول، دسته‌بندی‌ها و صفحات وب‌سایت). "
+                "فقط و فقط بر اساس این اطلاعات پاسخ بده. "
+                "اگر پاسخ در این متن‌ها وجود نداشت، بگو که نمی‌دانی و از کاربر بخواه با پشتیبانی تماس بگیرد.\n\n"
+                f"{context_str}\n\n"
                 f"سؤال کاربر:\n{message}"
             )
 

@@ -27,6 +27,8 @@ from sqlalchemy import or_, and_
 
 from models.faq import FAQ, Category
 from models.log import ChatLog
+from models.website_page import WebsitePage
+from models.tracked_site import TrackedSite
 from core.db import get_db
 from core.config import settings
 
@@ -217,6 +219,36 @@ class AnsweringAgent:
             handler = self.intent_handlers.get(intent, self.intent_handlers["unknown"])
             result = handler(normalized_message, canonical_question, db, context)
             
+            # 3.5. Search website pages for all intents (after FAQ/category search)
+            # Get all active websites
+            active_websites = db.query(TrackedSite).filter(TrackedSite.is_active == True).all()
+            website_ids = [w.id for w in active_websites]
+            
+            website_pages = []
+            website_pages_ids = []
+            if website_ids:
+                # Search website pages using ILIKE
+                pages = self.search_website_pages(db, website_ids, normalized_message, limit=3)
+                website_pages = pages
+                website_pages_ids = [p.id for p in pages]
+                
+                # Add website_pages to tables_queried if any found
+                if pages:
+                    if "website_pages" not in result.get("tables_queried", []):
+                        result.setdefault("tables_queried", []).append("website_pages")
+                    
+                    # Add website pages to metadata for SmartAIAgent
+                    result.setdefault("metadata", {})["website_pages"] = [
+                        {
+                            "id": p.id,
+                            "title": p.title or p.url,
+                            "url": p.url,
+                            "content": (p.content or "")[:1000]  # First 1000 chars as snippet
+                        }
+                        for p in pages
+                    ]
+                    result["metadata"]["website_pages_ids"] = website_pages_ids
+            
             # 4. Compose final answer (use LLM if available and needed)
             if result.get("success") and result.get("answer"):
                 # If we have FAQ data, optionally enhance with LLM
@@ -235,7 +267,13 @@ class AnsweringAgent:
             response.update(result)
             response["metadata"]["tables_queried"] = result.get("tables_queried", [])
             response["matched_ids"] = result.get("matched_ids", [])
+            # Add website_pages_ids to matched_ids if not already there
+            if website_pages_ids:
+                response["matched_ids"].extend([pid for pid in website_pages_ids if pid not in response["matched_ids"]])
             response["metadata"]["retrieval_method"] = result.get("metadata", {}).get("retrieval_method")
+            # Store website_pages_ids in metadata for logging
+            if website_pages_ids:
+                response["metadata"]["website_pages_ids"] = website_pages_ids
             
             # 6. Calculate processing time
             processing_time = (datetime.now() - start_time).total_seconds() * 1000
@@ -483,6 +521,103 @@ class AnsweringAgent:
         # Default to FAQ intent with lower confidence
         return ("general_question", 0.5, metadata)
     
+    def search_website_pages(
+        self,
+        session: Session,
+        website_ids: List[int],
+        normalized_message: str,
+        limit: int = 3
+    ) -> List[WebsitePage]:
+        """
+        Search website pages using ILIKE pattern matching.
+        
+        Args:
+            session: Database session
+            website_ids: List of website IDs to search
+            normalized_message: Normalized user message
+            limit: Maximum number of results
+            
+        Returns:
+            List of WebsitePage objects ordered by last_crawled_at DESC
+        """
+        try:
+            if not website_ids:
+                return []
+            
+            # Create pattern from normalized message (first 100 chars)
+            pattern = f"%{normalized_message[:100]}%"
+            
+            # Query with ILIKE
+            from sqlalchemy import or_
+            
+            pages = session.query(WebsitePage).filter(
+                WebsitePage.website_id.in_(website_ids),
+                WebsitePage.is_active == True,
+                or_(
+                    WebsitePage.content.ilike(pattern),
+                    WebsitePage.title.ilike(pattern)
+                )
+            ).order_by(
+                WebsitePage.last_crawled_at.desc()
+            ).limit(limit).all()
+            
+            return pages
+            
+        except Exception as e:
+            logger.error(f"Error searching website pages: {e}", exc_info=True)
+            return []
+    
+    def _search_website_pages(
+        self,
+        message: str,
+        db: Session,
+        tracked_site_id: Optional[int] = None,
+        limit: int = 3
+    ) -> List[Dict[str, Any]]:
+        """
+        Search website pages for relevant content (legacy method, uses new search_website_pages).
+        
+        Args:
+            message: User query
+            db: Database session
+            tracked_site_id: Optional site ID to filter by
+            limit: Maximum number of results
+            
+        Returns:
+            List of page dictionaries with title, content, url, and relevance score
+        """
+        try:
+            # Get website IDs - use all active websites if no tracked_site_id
+            if tracked_site_id:
+                website_ids = [tracked_site_id]
+            else:
+                # Get all active websites
+                websites = db.query(TrackedSite).filter(TrackedSite.is_active == True).all()
+                website_ids = [w.id for w in websites]
+            
+            if not website_ids:
+                return []
+            
+            # Use the new search function
+            pages = self.search_website_pages(db, website_ids, message, limit=limit)
+            
+            # Convert to dict format for compatibility
+            results = []
+            for page in pages:
+                results.append({
+                    "id": page.id,
+                    "title": page.title or page.url,
+                    "content": page.content[:1000] if page.content else "",  # First 1000 chars for snippet
+                    "url": page.url,
+                    "website_id": page.website_id
+                })
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error searching website pages: {e}", exc_info=True)
+            return []
+    
     def _handle_faq_intent(
         self,
         message: str,
@@ -495,6 +630,7 @@ class AnsweringAgent:
         
         Retrieves relevant FAQs from the database using both
         simple keyword matching and semantic search.
+        Also searches website pages as an additional knowledge source.
         Supports different phrasings through canonical question matching.
         Filters by tracked_site_id if provided in context.
         """
@@ -502,6 +638,11 @@ class AnsweringAgent:
         matched_ids = []
         category_filter = context.get("category_filter") if context else None
         tracked_site_id = context.get("tracked_site_id") if context else None
+        
+        # Search website pages as additional knowledge source
+        website_pages = self._search_website_pages(message, db, tracked_site_id, limit=3)
+        if website_pages:
+            tables_queried.append("website_pages")
         
         # Log site filtering
         if tracked_site_id:
@@ -598,6 +739,19 @@ class AnsweringAgent:
                     
                     logger.info(f"Using FAQ match: {best_match.get('question', '')[:50]}... (score: {score:.3f}, raw: {raw_score}, confidence: {confidence:.3f})")
                     
+                    # Include website pages in metadata for context
+                    metadata = {
+                        "matched_question": best_match.get("question"),
+                        "match_score": score,
+                        "raw_score": raw_score,
+                        "retrieval_method": "simple_search",
+                        "all_matches": simple_results[:3],  # Top 3 for context
+                        "match_quality": "good" if is_good_match else "acceptable"
+                    }
+                    if website_pages:
+                        metadata["website_pages_found"] = len(website_pages)
+                        metadata["website_pages"] = website_pages[:2]  # Top 2 for context
+                    
                     return {
                         "answer": best_match.get("answer", self.fallback_answer),
                         "source": "faq",
@@ -606,14 +760,7 @@ class AnsweringAgent:
                         "matched_ids": matched_ids,
                         "tables_queried": tables_queried,
                         "faq_data": [best_match],  # For LLM enhancement
-                        "metadata": {
-                            "matched_question": best_match.get("question"),
-                            "match_score": score,
-                            "raw_score": raw_score,
-                            "retrieval_method": "simple_search",
-                            "all_matches": simple_results[:3],  # Top 3 for context
-                            "match_quality": "good" if is_good_match else "acceptable"
-                        }
+                        "metadata": metadata
                     }
                 else:
                     # Match quality is too low, don't use it
@@ -736,8 +883,36 @@ class AnsweringAgent:
                 except Exception as e:
                     logger.warning(f"Direct DB query also failed: {e}")
             
+            # No FAQ matches found - check website pages
+            if website_pages and len(website_pages) > 0:
+                best_page = website_pages[0]
+                matched_ids.append(best_page["id"])
+                
+                logger.info(f"Using website page match: {best_page['title'][:50]}... (score: {best_page['score']})")
+                
+                # Use page content as answer (truncated if needed)
+                page_answer = best_page["content"]
+                if len(page_answer) > 1000:
+                    page_answer = page_answer[:1000] + "..."
+                
+                return {
+                    "answer": page_answer,
+                    "source": "website_page",
+                    "success": True,
+                    "confidence": min(best_page["score"] / 10.0, 0.8),  # Normalize score to 0-0.8
+                    "matched_ids": matched_ids,
+                    "tables_queried": tables_queried,
+                    "metadata": {
+                        "matched_page_title": best_page["title"],
+                        "matched_page_url": best_page["url"],
+                        "match_score": best_page["score"],
+                        "retrieval_method": "website_page_search",
+                        "all_matches": website_pages
+                    }
+                }
+            
             # No matches found at all
-            logger.warning(f"No FAQ matches found for query: {message[:50]}")
+            logger.warning(f"No FAQ or website page matches found for query: {message[:50]}")
             return {
                 "answer": self.fallback_answer,
                 "source": "fallback",
@@ -748,7 +923,8 @@ class AnsweringAgent:
                 "metadata": {
                     "retrieval_method": "none",
                     "reason": "no_matches_found",
-                    "simple_results_count": len(simple_results) if simple_results else 0
+                    "simple_results_count": len(simple_results) if simple_results else 0,
+                    "website_pages_count": len(website_pages) if website_pages else 0
                 }
             }
             
@@ -1024,6 +1200,7 @@ class AnsweringAgent:
                     "tables_queried": tables_queried,
                     "matched_ids": matched_ids,
                     "user_id": user_id,
+                    "website_pages_ids": metadata.get("website_pages_ids", []) if metadata else [],
                     "metadata": metadata or {},
                 }, ensure_ascii=False)
             )
