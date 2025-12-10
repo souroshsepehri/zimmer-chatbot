@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from core.db import engine, Base
-from routers import chat, faqs, logs, smart_chat, simple_chat, external_api, debug, smart_agent, api_integration, admin, admin_bot_settings, admin_sites, admin_websites
+from routers import chat, faqs, logs, smart_chat, simple_chat, external_api, debug, smart_agent, api_integration, admin, admin_bot_settings, admin_sites
 from core.config import settings
 
 # Import smart_agent early to ensure it's initialized with the loaded env vars
@@ -115,7 +115,6 @@ app.include_router(api_integration.router, prefix="/api", tags=["api-integration
 app.include_router(admin.router, tags=["admin"])
 app.include_router(admin_bot_settings.router)
 app.include_router(admin_sites.router)
-app.include_router(admin_websites.router)
 
 # Mount static files
 static_dir = Path(__file__).parent / "static"
