@@ -138,10 +138,12 @@ class ChatOrchestrator:
         baseline_answer = None
         baseline_source = None
         baseline_success = False
+        baseline_intent = None
         if isinstance(baseline_result, dict):
             baseline_answer = baseline_result.get("answer") or baseline_result.get("response")
             baseline_source = baseline_result.get("source")
             baseline_success = baseline_result.get("success", False)
+            baseline_intent = baseline_result.get("intent")
 
         smart_result: Optional[Dict[str, Any]] = None
         mode = "baseline_only"
@@ -161,6 +163,24 @@ class ChatOrchestrator:
             and baseline_answer is not None
         )
 
+        # ===================================================================
+        # FINAL ANSWER SELECTION LOGIC
+        # ===================================================================
+        # This section determines the final answer based on baseline results.
+        # Priority order:
+        # 1. Smart Agent (if enabled) - uses baseline as context
+        # 2. Greeting Intent - ALWAYS preserve successful greeting responses
+        #    - When intent="greeting" AND baseline_success=True AND baseline_answer exists
+        #    - Return baseline_answer directly, do NOT replace with fallback
+        #    - This ensures greeting messages like "سلام" get proper responses
+        # 3. FAQ/DB Match - baseline has real data from FAQ or database
+        #    - When baseline_success=True AND source in ALLOWED_SOURCES_FOR_SMART
+        #    - Return baseline_answer (FAQ match, database query result, etc.)
+        # 4. No Match (Fallback) - no FAQ match and no baseline answer
+        #    - Return generic fallback message
+        #    - Only applies to non-greeting messages (greetings handled in #2)
+        # ===================================================================
+        
         # DB-only mode: never call SmartAIAgent (USE_SMART_AGENT = False)
         # But if it were enabled, we would only call it when baseline has real data
         if smart_agent_allowed:
@@ -171,13 +191,22 @@ class ChatOrchestrator:
             final_answer = baseline_answer
             final_source = baseline_source
             final_success = baseline_success
+        elif baseline_intent == "greeting" and baseline_success and baseline_answer:
+            # SPECIAL CASE: Greeting messages with successful baseline should always be returned
+            # Do NOT replace with generic fallback message
+            # This ensures that greeting responses like "سلام! خوش آمدید..." are preserved
+            final_answer = baseline_answer
+            final_source = baseline_source or "greeting"  # Use "greeting" as source if baseline_source is None
+            final_success = True
+            logger.info(f"Preserving greeting response: intent={baseline_intent}, source={final_source}, success={baseline_success}")
         elif baseline_answer and baseline_success and baseline_source in ALLOWED_SOURCES_FOR_SMART:
-            # Baseline has real data - use it
+            # Baseline has real data from FAQ or database - use it
             final_answer = baseline_answer
             final_source = baseline_source
             final_success = baseline_success
         else:
             # No data in DB or fallback - return site-specific fallback message
+            # BUT: Only for non-greeting messages (greeting messages are handled above)
             if tracked_site:
                 final_answer = (
                     "در حال حاضر فقط می‌توانم به سوالات مربوط به اطلاعات ثبت‌شده برای این سایت پاسخ بدهم. "
