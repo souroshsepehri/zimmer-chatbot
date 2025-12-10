@@ -26,34 +26,58 @@
  *   - Category (app/admin/faqs/page.tsx, components/FAQModal.tsx)
  *   - ChatLog (app/admin/logs/page.tsx)
  *   - LogFilters (app/admin/logs/page.tsx)
+ * 
+ * Configuration:
+ *   - Uses NEXT_PUBLIC_API_BASE_URL environment variable
+ *   - Defaults to http://localhost:8001/api for development
+ *   - In production, set NEXT_PUBLIC_API_BASE_URL=https://chatbot.zimmerai.com/api
  */
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "";
+// Single source of truth for backend API base URL
+// Default to localhost for development, override with NEXT_PUBLIC_API_BASE_URL in production
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8001/api";
 
 /**
- * Helper function to make JSON API requests
+ * Helper function to make JSON API requests with logging
  */
 async function fetchJson<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-    cache: "no-store",
-  });
+  
+  // Log request for debugging
+  console.log(`[API] ${options.method || 'GET'} ${url}`);
+  
+  try {
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+      cache: "no-store",
+    });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`API error ${res.status} ${res.statusText} for ${url}: ${text}`);
+    // Log response for debugging
+    if (res.ok) {
+      console.log(`[API] ✓ ${res.status} ${url}`);
+    } else {
+      console.error(`[API] ✗ ${res.status} ${res.statusText} ${url}`);
+    }
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`API error ${res.status} ${res.statusText} for ${url}: ${text}`);
+    }
+
+    return res.json() as Promise<T>;
+  } catch (error) {
+    // Log error for debugging
+    console.error(`[API] Error: ${url}`, error);
+    throw error;
   }
-
-  return res.json() as Promise<T>;
 }
 
 // ============================================================================
@@ -272,4 +296,45 @@ export async function deleteLog(id: number): Promise<void> {
   await fetchJson<void>(`/api/logs/${id}`, {
     method: "DELETE",
   });
+}
+
+// ============================================================================
+// Health Check API
+// ============================================================================
+
+export interface HealthCheckResponse {
+  status: string;
+  message?: string;
+}
+
+/**
+ * Check backend health status
+ * Uses /api/health endpoint (backend serves health at /api/health)
+ */
+export async function checkHealth(): Promise<HealthCheckResponse> {
+  try {
+    // Backend health endpoint is at /api/health
+    const url = `${API_BASE_URL}/health`;
+    console.log(`[API] Health check: ${url}`);
+    
+    const res = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    if (res.ok) {
+      console.log(`[API] ✓ Health check passed: ${res.status} ${url}`);
+      const data = await res.json().catch(() => ({ status: "ok" }));
+      return data;
+    } else {
+      console.error(`[API] ✗ Health check failed: ${res.status} ${url}`);
+      return { status: "error", message: `Backend returned ${res.status}` };
+    }
+  } catch (error) {
+    console.error(`[API] Health check error:`, error);
+    return { 
+      status: "error", 
+      message: error instanceof Error ? error.message : "Backend unavailable" 
+    };
+  }
 }

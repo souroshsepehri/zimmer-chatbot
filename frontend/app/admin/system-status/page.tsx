@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { ArrowLeft, RefreshCw, CheckCircle, XCircle, AlertCircle, Server, Database, Cpu, HardDrive } from 'lucide-react'
 import Link from 'next/link'
+import { API_BASE_URL, checkHealth } from '@/lib/api'
 
 interface SystemStatus {
   backend: {
@@ -46,17 +47,17 @@ export default function SystemStatusPage() {
     setError(null)
     
     try {
-      // Use same hostname as frontend, but port 8001
-      const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
-      const baseUrl = hostname === 'localhost' || hostname === '127.0.0.1' 
-        ? 'http://localhost:8001' 
-        : `http://${hostname}:8001`
+      // Check backend health using centralized function
+      const startTime = performance.now()
+      const healthResult = await checkHealth()
+      const responseTime = Math.round(performance.now() - startTime)
+      const backendStatus = healthResult.status === 'ok' || healthResult.status === 'healthy' ? 'online' : 'offline'
       
-      // Check backend health
-      const healthResponse = await fetch(`${baseUrl}/health`)
-      const backendStatus = healthResponse.ok ? 'online' : 'offline'
+      // Also verify with direct fetch for consistency
+      const healthUrl = `${API_BASE_URL}/health`
+      const healthResponse = await fetch(healthUrl, { cache: 'no-store' })
       
-      // Check API endpoints
+      // Check API endpoints using centralized API_BASE_URL
       const endpoints = {
         logs: false,
         faqs: false,
@@ -65,30 +66,38 @@ export default function SystemStatusPage() {
       }
       
       try {
-        const logsResponse = await fetch(`${baseUrl}/api/logs/stats`)
+        const logsResponse = await fetch(`${API_BASE_URL}/logs/stats`)
         endpoints.logs = logsResponse.ok
-      } catch (e) {}
+      } catch (e) {
+        console.error('[SystemStatus] Logs endpoint check failed:', e)
+      }
       
       try {
-        const faqsResponse = await fetch(`${baseUrl}/api/faqs`)
+        const faqsResponse = await fetch(`${API_BASE_URL}/faqs`)
         endpoints.faqs = faqsResponse.ok
-      } catch (e) {}
+      } catch (e) {
+        console.error('[SystemStatus] FAQs endpoint check failed:', e)
+      }
       
       try {
-        const categoriesResponse = await fetch(`${baseUrl}/api/categories`)
+        const categoriesResponse = await fetch(`${API_BASE_URL}/categories`)
         endpoints.categories = categoriesResponse.ok
-      } catch (e) {}
+      } catch (e) {
+        console.error('[SystemStatus] Categories endpoint check failed:', e)
+      }
       
       try {
-        const chatResponse = await fetch(`${baseUrl}/api/chat`, {
+        const chatResponse = await fetch(`${API_BASE_URL}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: 'test' })
         })
         endpoints.chat = chatResponse.ok
-      } catch (e) {}
+      } catch (e) {
+        console.error('[SystemStatus] Chat endpoint check failed:', e)
+      }
       
-      // Get database stats
+      // Get database stats using centralized API_BASE_URL
       let dbStats = {
         totalLogs: 0,
         totalFAQs: 0,
@@ -96,33 +105,39 @@ export default function SystemStatusPage() {
       }
       
       try {
-        const logsStatsResponse = await fetch(`${baseUrl}/api/logs/stats`)
+        const logsStatsResponse = await fetch(`${API_BASE_URL}/logs/stats`)
         if (logsStatsResponse.ok) {
           const logsData = await logsStatsResponse.json()
           dbStats.totalLogs = logsData.total_logs || 0
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error('[SystemStatus] Failed to get logs stats:', e)
+      }
       
       try {
-        const faqsResponse = await fetch(`${baseUrl}/api/faqs`)
+        const faqsResponse = await fetch(`${API_BASE_URL}/faqs`)
         if (faqsResponse.ok) {
           const faqsData = await faqsResponse.json()
           dbStats.totalFAQs = Array.isArray(faqsData) ? faqsData.length : (faqsData.items?.length || 0)
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error('[SystemStatus] Failed to get FAQs:', e)
+      }
       
       try {
-        const categoriesResponse = await fetch(`${baseUrl}/api/categories`)
+        const categoriesResponse = await fetch(`${API_BASE_URL}/categories`)
         if (categoriesResponse.ok) {
           const categoriesData = await categoriesResponse.json()
           dbStats.totalCategories = Array.isArray(categoriesData) ? categoriesData.length : 0
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error('[SystemStatus] Failed to get categories:', e)
+      }
       
       const systemStatus: SystemStatus = {
         backend: {
           status: backendStatus,
-          responseTime: Date.now() - performance.now(),
+          responseTime: responseTime,
           lastCheck: new Date().toLocaleString('fa-IR')
         },
         database: {

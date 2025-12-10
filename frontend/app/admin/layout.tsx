@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import AdminGuard from '@/components/AdminGuard';
+import HealthStatusBanner from '@/components/HealthStatusBanner';
 import { 
   LayoutDashboard, 
   HelpCircle, 
@@ -45,6 +46,7 @@ export default function AdminLayout({
     <AdminGuard>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100" dir="rtl">
         <Navigation variant="admin" />
+        <HealthStatusBanner />
 
       <div className="flex">
         {/* Modern Sidebar */}

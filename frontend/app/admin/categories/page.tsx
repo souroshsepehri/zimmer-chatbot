@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getCategories, createCategory, updateCategory, deleteCategory } from '@/lib/api';
+import { getCategories, createCategory, updateCategory, deleteCategory, API_BASE_URL } from '@/lib/api';
 
 interface Category {
   id: number;
@@ -168,7 +168,7 @@ export default function CategoryManagement() {
               {error.includes('اتصال به سرور') && (
                 <p className="text-sm mt-1 text-red-600">
                   لطفاً مطمئن شوید که سرور بک‌اند در حال اجرا است و به آدرس{' '}
-                  <code className="bg-red-100 px-1 rounded">http://localhost:8001</code> دسترسی دارد.
+                  <code className="bg-red-100 px-1 rounded">{API_BASE_URL}</code> دسترسی دارد.
                 </p>
               )}
             </div>
